@@ -272,7 +272,7 @@ class InpcrdLoader(object):
             crd = crd[:natoms, :]
         return crd
 
-    def get_coordinates(self):
+    def get_crd(self):
         return self._crd
 
 
