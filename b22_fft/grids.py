@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import numpy as np
+import netcdf4 as nc
 
 from amber_par import AmberPrmtopLoader, InpcrdLoader
 
@@ -97,8 +98,7 @@ class Grid(object):
         assert len(location) == 3, "location must have len 3"
 
         displacement = np.array(location, dtype=float) - self._get_molecule_center_of_mass()
-        for atom_ind in range(len(self._crd)):
-            self._crd[atom_ind] += displacement
+        self._crd += displacement.reshape(1, 3)
         return None
     
     def _get_molecule_center_of_mass(self):
@@ -183,6 +183,57 @@ class Grid(object):
                 return True
         return False
 
+    def _move_molecule_to_grid_center(self):
+        """
+        move the molecule to near the grid center
+        store self._max_grid_indices and self._initial_com
+        """
+        lower_molecule_corner_crd = self._crd.min(axis=0)
+        upper_molecule_corner_crd = self._crd.max(axis=0)
+
+        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
+        if np.any(molecule_box_lengths < 0):
+            raise RuntimeError("One of the molecule box lengths are negative")
+
+        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
+        # self._max_grid_indices is how far it can step before moving out of the box
+        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
+        if np.any(self._max_grid_indices <= 1):
+            raise RuntimeError("At least one of the max grid indices is <= one")
+
+        molecule_box_center = (lower_molecule_corner_crd + upper_molecule_corner_crd) / 2.
+        grid_center = (self._origin_crd + self._upper_most_corner_crd) / 2.
+        displacement = grid_center - molecule_box_center
+
+        print("Molecule is translated by ", displacement)
+        self._crd += displacement.reshape(1, 3)
+        self._initial_com = self._get_molecule_center_of_mass()
+        return None
+
+    def _move_molecule_to_lower_corner(self):
+        """
+        move the molecule to near the grid lower corner
+        store self._max_grid_indices and self._initial_com
+        """
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+
+        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
+        if np.any(molecule_box_lengths < 0):
+            raise RuntimeError("One of the molecule box lengths are negative")
+
+        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
+        # self._max_grid_indices is how far it can step before moving out of the box
+        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
+        if np.any(self._max_grid_indices <= 1):
+            raise RuntimeError("At least one of the max grid indices is <= one")
+
+        displacement = self._origin_crd - lower_molecule_corner_crd
+        print("Molecule is translated by ", displacement)
+        self._crd += displacement.reshape(1, 3)
+        self._initial_com = self._get_molecule_center_of_mass()
+        return None
+
     def get_grid_func_names(self):
         return self._grid_func_names
     
@@ -257,8 +308,8 @@ class PotentialGrid(Grid):
                  buried_surface_area_per_atom_pair=0,
                  surface_pair_distance_cutoff=5.,
                  spacing=0.25,
-                 counts=(),
-                 extra_buffer=5.0):
+                 counts=(1, 1, 1),
+                 where_to_place_molecule="lower_corner"):
         """
         :param prmtop_file_name: str,  AMBER prmtop file
         :param inpcrd_file_name: str, AMBER coordinate file
@@ -278,14 +329,31 @@ class PotentialGrid(Grid):
                             extra buffer space arround the molecule, not used if counts is specified
         """
         Grid.__init__(self)
+
+        # save parameter to self._prmtop and "lj_sigma_scaling_factor" to self._grid["lj_sigma_scaling_factor"]
         self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor)
         self._FFTs = {}
 
         if new_calculation:
             self._load_inpcrd(inpcrd_file_name)
-            nc_handle = netCDF4.Dataset(grid_nc_file, "w", format="NETCDF4")
-            self._write_to_nc(nc_handle, "lj_sigma_scaling_factor", 
-                                np.array([lj_sigma_scaling_factor], dtype=float))
+            nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
+
+            # TODO calculate grid parameters using spacing and count
+            # save "origin", "d0", "d1", "d2", "spacing" and "counts"
+            self._cal_grid_parameters(spacing, counts)
+
+            # save "x", "y" and "z" to self._grid
+            self._cal_grid_coordinates()
+
+            # set convenient parameters for latter use: self._origin_crd, self._upper_most_corner_crd,
+            # self._upper_most_corner, self._spacing
+            self._initialize_convenient_para()
+
+            # move molecule and also store self._max_grid_indices (not use for this grid) and self._initial_com
+            if where_to_place_molecule == "center":
+                self._move_molecule_to_grid_center()
+            elif where_to_place_molecule = "lower_corner":
+                self._move_molecule_to_grid_lower_corner()
 
             if bsite_file is not None:
                 print("Rececptor is assumed to be correctely translated such that box encloses binding pocket.")
@@ -367,30 +435,27 @@ class PotentialGrid(Grid):
         nc_handle.variables[key][:] = value
         return None
 
-    def _cal_grid_parameters_with_bsite(self, spacing, bsite_file, nc_handle):
+    def _cal_grid_parameters(self, spacing, counts):
         """
         :param spacing: float, unit in angstrom, the same in x, y, z directions
         :param bsite_file: str, the file name of "measured_binding_site.py" from AlGDock pipeline
         :param nc_handle: an instance of netCDF4.Dataset()
         :return: None
         """
+        assert len(counts) == 3, "counts must have three numbers"
+        for count in counts:
+            assert count > 0, "count must be positive integer"
+
         assert spacing > 0, "spacing must be positive"
+
         self._set_grid_key_value("origin", np.zeros([3], dtype=float))
         
         self._set_grid_key_value("d0", np.array([spacing, 0, 0], dtype=float))
         self._set_grid_key_value("d1", np.array([0, spacing, 0], dtype=float))
         self._set_grid_key_value("d2", np.array([0, 0, spacing], dtype=float))
         self._set_grid_key_value("spacing", np.array([spacing]*3, dtype=float))
-        
-        for line in open(bsite_file, "r"):
-            exec(line)
-        length = 2. * half_edge_length         # TODO: this is not good, half_edge_length is define in bsite_file
-        count = np.ceil(length / spacing) + 1
-        
-        self._set_grid_key_value("counts", np.array([count]*3, dtype=int))
+        self._set_grid_key_value("counts", np.array(counts, dtype=int))
 
-        for key in ["origin", "d0", "d1", "d2", "spacing", "counts"]:
-            self._write_to_nc(nc_handle, key, self._grid[key])
         return None
     
     def _cal_grid_parameters_without_bsite(self, spacing, extra_buffer, nc_handle):
@@ -426,24 +491,7 @@ class PotentialGrid(Grid):
             self._write_to_nc(nc_handle, key, self._grid[key])
         return None
     
-    def _move_receptor_to_grid_center(self):
-        """
-        use this when making box encompassing the whole receptor
-        """
-        lower_receptor_corner = np.array([self._crd[:,i].min() for i in range(3)], dtype=float)
-        upper_receptor_corner = np.array([self._crd[:,i].max() for i in range(3)], dtype=float)
-        
-        receptor_box_center = (upper_receptor_corner + lower_receptor_corner) / 2.
-        grid_center = (self._origin_crd + self._uper_most_corner_crd) / 2.
-        displacement = grid_center - receptor_box_center
-
-        print("Receptor is translated by ", displacement)
-
-        for atom_ind in range(len(self._crd)):
-            self._crd[atom_ind] += displacement
-        return None
-    
-    def _cal_grid_coordinates(self, nc_handle):
+    def _cal_grid_coordinates(self):
         """
         calculate grid coordinates (x,y,z) for each corner,
         save 'x', 'y', 'z' to self._grid
@@ -467,8 +515,6 @@ class PotentialGrid(Grid):
         self._set_grid_key_value("y", y)
         self._set_grid_key_value("z", z)
 
-        for key in ["x", "y", "z"]:
-            self._write_to_nc(nc_handle, key, self._grid[key])
         return None
 
     def _get_charges(self, name):
