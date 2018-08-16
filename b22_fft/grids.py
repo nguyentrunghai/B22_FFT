@@ -240,27 +240,42 @@ def debye_huckel_kappa(I_mole_per_litter, dielectric_constant, temperature):
     return kappa
 
 
- 
-class RecGrid(Grid):
+class PotentialGrid(Grid):
     """
     calculate the potential part of the interaction energy.
     """
-    def __init__(self,  prmtop_file_name, lj_sigma_scaling_factor, 
-                        inpcrd_file_name,
-                        bsite_file,
-                        grid_nc_file,
-                        new_calculation=False,
-                        spacing=0.25, extra_buffer=3.0):
+    def __init__(self,
+                 prmtop_file_name,
+                 inpcrd_file_name,
+                 grid_nc_file,
+                 new_calculation=False,
+                 lj_sigma_scaling_factor=1.,
+                 ionic_strength=0.,
+                 dielectric=1.,
+                 temperature=300.,
+                 surface_tension=0.,
+                 buried_surface_area_per_atom_pair=0,
+                 surface_pair_distance_cutoff=5.,
+                 spacing=0.25,
+                 counts=(),
+                 extra_buffer=5.0):
         """
-        :param prmtop_file_name: str, name of AMBER prmtop file
-        :param lj_sigma_scaling_factor: float
-        :param inpcrd_file_name: str, name of AMBER coordinate file
-        :param bsite_file: str or None, if not None, name of a file defining the box dimension.
-        This file is the same as "measured_binding_site.py" from AlGDock pipeline.
-        :param grid_nc_file: str, name of grid nc file
-        :param new_calculation: bool, if True do the new grid calculation else load data in grid_nc_file.
-        :param spacing: float and in angstrom.
-        :param extra_buffer: float
+        :param prmtop_file_name: str,  AMBER prmtop file
+        :param inpcrd_file_name: str, AMBER coordinate file
+        :param grid_nc_file: str, netCDF4 file
+        :param new_calculation: if True do the new grid calculation else load data in grid_nc_file
+        :param lj_sigma_scaling_factor: float 0.5 < lj_sigma_scaling_factor < 1
+        :param ionic_strength: float, in mole per litter
+        :param dielectric: float, > 0
+        :param temperature: float
+        :param surface_tension: float, >= 0
+        :param buried_surface_area_per_atom_pair: float >=0
+        :param surface_pair_distance_cutoff: float in angstrom, > 0.
+                                            distance within which a pair is said to form surface contact.
+        :param spacing: float, in angstrom
+        :param counts: tuple of 3 floats, number of grid points a long x, y and z
+        :param extra_buffer: float in angstrom,
+                            extra buffer space arround the molecule, not used if counts is specified
         """
         Grid.__init__(self)
         self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor)
