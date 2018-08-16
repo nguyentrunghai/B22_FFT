@@ -327,7 +327,10 @@ class PotentialGrid(Grid):
         :param counts: tuple of 3 floats, number of grid points a long x, y and z
         :param extra_buffer: float in angstrom,
                             extra buffer space arround the molecule, not used if counts is specified
+        :param where_to_place_molecule: str, one of the two ["center", "lower_corner"]
         """
+        assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
+
         Grid.__init__(self)
 
         # save parameter to self._prmtop and "lj_sigma_scaling_factor" to self._grid["lj_sigma_scaling_factor"]
@@ -352,20 +355,14 @@ class PotentialGrid(Grid):
             # move molecule and also store self._max_grid_indices (not use for this grid) and self._initial_com
             if where_to_place_molecule == "center":
                 self._move_molecule_to_grid_center()
-            elif where_to_place_molecule = "lower_corner":
-                self._move_molecule_to_grid_lower_corner()
+            elif where_to_place_molecule == "lower_corner":
+                self._move_molecule_to_lower_corner()
 
-            if bsite_file is not None:
-                print("Rececptor is assumed to be correctely translated such that box encloses binding pocket.")
-                self._cal_grid_parameters_with_bsite(spacing, bsite_file, nc_handle)
-                self._cal_grid_coordinates(nc_handle)
-                self._initialize_convenient_para()
-            else:
-                print("No binding site specified, box encloses the whole receptor")
-                self._cal_grid_parameters_without_bsite(spacing, extra_buffer, nc_handle)
-                self._cal_grid_coordinates(nc_handle)
-                self._initialize_convenient_para()
-                self._move_receptor_to_grid_center()
+            # TODO:
+            # Debye Huckel
+            # surface term
+            # extend list of allowed keys or omit it.
+            # store all the necessary to nc file
 
             self._cal_potential_grids(nc_handle)
             self._write_to_nc(nc_handle, "trans_crd", self._crd)
