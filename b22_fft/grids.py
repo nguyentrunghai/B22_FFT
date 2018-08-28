@@ -14,19 +14,21 @@ from util import c_cal_potential_grid
 class Grid(object):
     """
     an base class defining some common methods and data attributes
-    working implementations are in LigGrid and RecGrid below
+    working implementations are in PotentialGrid and ChargeGrid below
     """
     def __init__(self):
         self._grid = {}
 
         # TODO add surface
+        # TODO No need surface for now
+        # TODO Dont need allowed keys
         self._grid_func_names = ("electrostatic", "LJr", "LJa", "occupancy")
 
         # keys to be stored in the result nc file
-        cartesian_axes = ("x", "y", "z")
-        box_dim_names = ("d0", "d1", "d2")
-        others = ("spacing", "counts", "origin", "lj_sigma_scaling_factor")
-        self._grid_allowed_keys = self._grid_func_names + cartesian_axes + box_dim_names + others
+        #cartesian_axes = ("x", "y", "z")
+        #box_dim_names = ("d0", "d1", "d2")
+        #others = ("spacing", "counts", "origin", "lj_sigma_scaling_factor")
+        #self._grid_allowed_keys = self._grid_func_names + cartesian_axes + box_dim_names + others
 
         # 8 corners of a cubic box
         self._eight_corner_shifts = [np.array([i,j,k], dtype=int) for i in range(2) for j in range(2) for k in range(2)]
@@ -38,9 +40,9 @@ class Grid(object):
     def _get_six_corner_shifts(self):
         six_corner_shifts = []
         for i in [-1, 1]:
-            six_corner_shifts.append(np.array([i,0,0], dtype=int))
-            six_corner_shifts.append(np.array([0,i,0], dtype=int))
-            six_corner_shifts.append(np.array([0,0,i], dtype=int))
+            six_corner_shifts.append(np.array([i, 0, 0], dtype=int))
+            six_corner_shifts.append(np.array([0, i, 0], dtype=int))
+            six_corner_shifts.append(np.array([0, 0, i], dtype=int))
         return np.array(six_corner_shifts, dtype=int)
     
     def _set_grid_key_value(self, key, value):
@@ -48,14 +50,11 @@ class Grid(object):
         key:    str
         value:  any object
         """
-        assert key in self._grid_allowed_keys, key + " is not an allowed key"
         print("setting " + key)
-        if key not in self._grid_func_names:
-            print(value)
         self._grid[key] = value
         return None
     
-    def _load_prmtop(self, prmtop_file_name, lj_sigma_scaling_factor):
+    def _load_prmtop(self, prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor):
         """
         :param prmtop_file_name: str, name of AMBER prmtop file
         :param lj_sigma_scaling_factor: float, must have value in [0.5, 1.0].
@@ -70,8 +69,13 @@ class Grid(object):
         # scale the Lennard Jones sigma parameters
         self._prmtop["LJ_SIGMA"] *= lj_sigma_scaling_factor
 
-        # save "lj_sigma_scaling_factor" to self._grid
+        # scale Lennard Jones depth
+        self._prmtop["A_LJ_CHARGE"] *= np.sqrt(lj_depth_scaling_factor)
+        self._prmtop["R_LJ_CHARGE"] *= np.sqrt(lj_depth_scaling_factor)
+
+        # save "lj_sigma_scaling_factor" and "lj_depth_scaling_factor" to self._grid
         self._set_grid_key_value("lj_sigma_scaling_factor", np.array([lj_sigma_scaling_factor], dtype=float))
+        self._set_grid_key_value("lj_depth_scaling_factor", np.array([lj_depth_scaling_factor], dtype=float))
         return None
     
     def _load_inpcrd(self, inpcrd_file_name):
@@ -159,7 +163,6 @@ class Grid(object):
         corner_crd = self._get_corner_crd(corner)
         d = (corner_crd - atom_coordinate)**2
         return np.sqrt(d.sum())
-
 
     def _containing_cube(self, atom_coordinate):
         if not self._is_in_grid(atom_coordinate):
@@ -255,9 +258,6 @@ class Grid(object):
     def get_natoms(self):
         return self._prmtop["POINTERS"]["NATOM"]
 
-    def get_allowed_keys(self):
-        return self._grid_allowed_keys
-
 
 def debye_huckel_kappa(I_mole_per_litter, dielectric_constant, temperature):
     """
@@ -301,12 +301,10 @@ class PotentialGrid(Grid):
                  grid_nc_file,
                  new_calculation=False,
                  lj_sigma_scaling_factor=1.,
+                 lj_depth_scaling_factor=1.,
                  ionic_strength=0.,
                  dielectric=1.,
                  temperature=300.,
-                 surface_tension=0.,
-                 buried_surface_area_per_atom_pair=0,
-                 surface_pair_distance_cutoff=5.,
                  spacing=0.25,
                  counts=(1, 1, 1),
                  where_to_place_molecule="lower_corner"):
@@ -315,14 +313,11 @@ class PotentialGrid(Grid):
         :param inpcrd_file_name: str, AMBER coordinate file
         :param grid_nc_file: str, netCDF4 file
         :param new_calculation: if True do the new grid calculation else load data in grid_nc_file
-        :param lj_sigma_scaling_factor: float 0.5 < lj_sigma_scaling_factor < 1
+        :param lj_sigma_scaling_factor: float
+        :param lj_depth_scaling_factor: float, used to rescale epsilon (LJ depth) to account for different surface tension
         :param ionic_strength: float, in mole per litter
         :param dielectric: float, > 0
         :param temperature: float
-        :param surface_tension: float, >= 0
-        :param buried_surface_area_per_atom_pair: float >=0
-        :param surface_pair_distance_cutoff: float in angstrom, > 0.
-                                            distance within which a pair is said to form surface contact.
         :param spacing: float, in angstrom
         :param counts: tuple of 3 floats, number of grid points a long x, y and z
         :param extra_buffer: float in angstrom,
@@ -332,16 +327,26 @@ class PotentialGrid(Grid):
         assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
 
         Grid.__init__(self)
-
-        # save parameter to self._prmtop and "lj_sigma_scaling_factor" to self._grid["lj_sigma_scaling_factor"]
-        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor)
         self._FFTs = {}
 
+        # save parameter to self._prmtop and "lj_sigma_scaling_factor" to self._grid["lj_sigma_scaling_factor"]
+        #
+        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
+
+        # Charges in potential grid will carry the dielectric
+        self._prmtop["CHARGE_E_UNIT"] /= dielectric
+        self._set_grid_key_value("dielectric", np.array([dielectric], dtype=float))
+
+        # Debye Huckel kappa
+        self._debye_huckel_kappa = self._cal_debye_huckel_kappa(ionic_strength, dielectric, temperature)
+        self._set_grid_key_value("ionic_strength", np.array([ionic_strength], dtype=float))
+        self._set_grid_key_value("temperature", np.array([temperature], dtype=float))
+
         if new_calculation:
+
             self._load_inpcrd(inpcrd_file_name)
             nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
 
-            # TODO calculate grid parameters using spacing and count
             # save "origin", "d0", "d1", "d2", "spacing" and "counts"
             self._cal_grid_parameters(spacing, counts)
 
@@ -352,7 +357,9 @@ class PotentialGrid(Grid):
             # self._upper_most_corner, self._spacing
             self._initialize_convenient_para()
 
-            # move molecule and also store self._max_grid_indices (not use for this grid) and self._initial_com
+            # move molecule
+            # _move_molecule_to_grid_center() also stores self._max_grid_indices (not use for potential grid)
+            # and self._initial_com
             if where_to_place_molecule == "center":
                 self._move_molecule_to_grid_center()
             elif where_to_place_molecule == "lower_corner":
@@ -360,14 +367,13 @@ class PotentialGrid(Grid):
 
             # TODO:
             # Debye Huckel
-            # surface term
-            # extend list of allowed keys or omit it.
+            # put everything that will be stored in self._grid
             # store all the necessary to nc file
 
             self._cal_potential_grids(nc_handle)
             self._write_to_nc(nc_handle, "trans_crd", self._crd)
             nc_handle.close()
-                
+
         self._load_precomputed_grids(grid_nc_file, lj_sigma_scaling_factor)
 
     def _load_precomputed_grids(self, grid_nc_file, lj_sigma_scaling_factor):
@@ -402,6 +408,37 @@ class PotentialGrid(Grid):
 
         nc_handle.close()
         return None
+
+    def _cal_debye_huckel_kappa(self, I_mole_per_litter, dielectric_constant, temperature):
+        """
+        :param I_mole_per_litter: float, ionic strength
+        :param dielectric_constant: float, dimensionless
+        :param temperature: float, temperature in K
+        :return: float, kappa (1 / Angstrom)
+
+        Formula: see https://en.wikipedia.org/wiki/Debye_length, section: In an electrolyte solution
+        kappa = sqrt( 2 * NA * e**2 * I / (epsilon_r * epsilon_0 * kB * T)  )
+        Where in the SI units:
+                NA = NA_bar * 10**(23) [mol**(-1)]; NA_bar = 6.022140857
+                e = e_bar * 10**(-19) [C]; e_bar = 1.6021766208
+                I: input ionic strength in [mol * m**(-3)]
+                epsilon_r: input dielectric constant > 0
+                epsilon_0 = epsilon_0_bar * 10**(-12) [C**2 * J**(-2) * m**(-2)], epsilon_0_bar = 8.854187817
+                kB = kB_bar * 10**(-23) [J * K**(-1)]
+                T: input temperature in K
+        """
+        assert dielectric_constant > 0, "dielectric_constant must be positive"
+
+        NA_bar = 6.022140857
+        e_bar = 1.6021766208
+        I_mole_per_m3 = 1000 * I_mole_per_litter
+        epsilon_r = dielectric_constant
+        epsilon_0_bar = 8.854187817
+        kB_bar = 1.38064852
+        T = temperature
+
+        kappa = np.sqrt(2 * NA_bar * e_bar ** 2 * I_mole_per_m3 / (epsilon_r * epsilon_0_bar * kB_bar * T))
+        return kappa
 
     def _cal_FFT(self, name):
         if name not in self._grid_func_names:
@@ -537,7 +574,7 @@ class PotentialGrid(Grid):
             charges = self._get_charges(name)
             grid = c_cal_potential_grid(name, self._crd, 
                                         self._grid["x"], self._grid["y"], self._grid["z"],
-                                        self._origin_crd, self._uper_most_corner_crd, self._uper_most_corner,
+                                        self._origin_crd, self._upper_most_corner_crd, self._upper_most_corner,
                                         self._grid["spacing"], self._grid["counts"], 
                                         charges, self._prmtop["LJ_SIGMA"])
 
@@ -652,7 +689,7 @@ class PotentialGrid(Grid):
         return None
 
 
-class LigGrid(Grid):
+class ChargeGrid(Grid):
     """
     Calculate the "charge" part of the interaction energy.
     """
