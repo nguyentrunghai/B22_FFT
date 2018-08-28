@@ -149,7 +149,7 @@ class AmberPrmtopLoader(object):
         LJ_diameter = np.zeros(NTYPES, dtype=float)
         LJ_depth = np.zeros(NTYPES, dtype=float)
         for i in range(NTYPES):
-            LJ_index = self._parameters["NONBONDED_PARM_INDEX"][NTYPES*i+i] - 1
+            LJ_index = self._parameters["NONBONDED_PARM_INDEX"][NTYPES*i + i] - 1
             if self._parameters["LENNARD_JONES_ACOEF"][LJ_index] < 1.0e-6:
                 LJ_diameter[i] = 0
                 LJ_depth[i] = 0
