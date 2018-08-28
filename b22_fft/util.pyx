@@ -425,6 +425,70 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
 
 
 @cython.boundscheck(False)
+def c_cal_potential_grid_LJa(np.ndarray[np.float64_t, ndim=2] crd,
+                            np.ndarray[np.float64_t, ndim=1] grid_x,
+                            np.ndarray[np.float64_t, ndim=1] grid_y,
+                            np.ndarray[np.float64_t, ndim=1] grid_z,
+                            np.ndarray[np.float64_t, ndim=1] origin_crd,
+                            np.ndarray[np.float64_t, ndim=1] upper_most_corner_crd,
+                            np.ndarray[np.int64_t, ndim=1]   upper_most_corner,
+                            np.ndarray[np.float64_t, ndim=1] spacing,
+                            np.ndarray[np.int64_t, ndim=1]   gird_counts,
+                            np.ndarray[np.float64_t, ndim=1] charges,
+                            np.ndarray[np.float64_t, ndim=1] lj_sigma):
+
+    cdef:
+        list corners
+
+        int natoms = crd.shape[0]
+        int i_max = grid_x.shape[0]
+        int j_max = grid_y.shape[0]
+        int k_max = grid_z.shape[0]
+        int i, j, k
+        int atom_ind
+        
+        double charge, lj_diameter
+        double d, exponent
+        double dx_tmp, dxy_tmp
+        
+        np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
+        np.ndarray[np.float64_t, ndim=3] grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+        np.ndarray[np.float64_t, ndim=1] atom_coordinate
+        np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
+
+
+    exponent = 3.
+
+    for atom_ind in range(natoms):
+        atom_coordinate = crd[atom_ind]
+        charge = charges[atom_ind]
+        lj_diameter = lj_sigma[atom_ind]
+
+        dx2 = (atom_coordinate[0] - grid_x)**2
+        dy2 = (atom_coordinate[1] - grid_y)**2
+        dz2 = (atom_coordinate[2] - grid_z)**2
+
+        for i in range(i_max):
+            dx_tmp = dx2[i]
+
+            for j in range(j_max):
+                dxy_tmp = dx_tmp + dy2[j]
+
+                for k in range(k_max):
+                    d = (dxy_tmp + dz2[k]) ** exponent
+                    grid_tmp[i,j,k] = charge / d
+
+        corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, upper_most_corner_crd,
+                                            upper_most_corner, spacing, grid_x, grid_y, grid_z, gird_counts)
+
+        for i, j, k in corners:
+            grid_tmp[i,j,k] = 0.
+
+        grid += grid_tmp
+    return grid
+
+
+@cython.boundscheck(False)
 def c_cal_charge_grid(  str name,
                         np.ndarray[np.float64_t, ndim=2] crd,
                         np.ndarray[np.float64_t, ndim=1] charges,
