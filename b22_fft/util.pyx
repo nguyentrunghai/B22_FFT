@@ -448,7 +448,7 @@ def c_cal_potential_grid_LJa(np.ndarray[np.float64_t, ndim=2] crd,
         int atom_ind
         
         double charge, lj_diameter
-        double d, exponent
+        double d
         double dx_tmp, dxy_tmp
         
         np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
@@ -456,8 +456,6 @@ def c_cal_potential_grid_LJa(np.ndarray[np.float64_t, ndim=2] crd,
         np.ndarray[np.float64_t, ndim=1] atom_coordinate
         np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
 
-
-    exponent = 3.
 
     for atom_ind in range(natoms):
         atom_coordinate = crd[atom_ind]
@@ -512,16 +510,13 @@ def c_cal_potential_grid_LJr(np.ndarray[np.float64_t, ndim=2] crd,
         int atom_ind
 
         double charge, lj_diameter
-        double d, exponent
+        double d
         double dx_tmp, dxy_tmp
 
         np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
         np.ndarray[np.float64_t, ndim=3] grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
         np.ndarray[np.float64_t, ndim=1] atom_coordinate
         np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
-
-
-    exponent = 6.
 
     for atom_ind in range(natoms):
         atom_coordinate = crd[atom_ind]
