@@ -8,7 +8,8 @@ from amber_par import AmberPrmtopLoader, InpcrdLoader
 
 from util import c_is_in_grid, cdistance, c_containing_cube
 from util import c_cal_charge_grid
-from util import c_cal_potential_grid
+from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
+from util import c_cal_potential_grid_occupancy
 
 
 class Grid(object):
@@ -565,24 +566,51 @@ class PotentialGrid(Grid):
         else:
             raise RuntimeError("%s is unknown"%name)
 
-    def _cal_potential_grids(self, nc_handle):
+    def _cal_potential_grids(self):
         """
-        use cython to calculate each to the grids, save them to nc file
+        :return: None
         """
         for name in self._grid_func_names:
-            print("calculating %s grid"%name)
+            print("Calculating %s grid"%name)
             charges = self._get_charges(name)
-            grid = c_cal_potential_grid(name, self._crd, 
-                                        self._grid["x"], self._grid["y"], self._grid["z"],
-                                        self._origin_crd, self._upper_most_corner_crd, self._upper_most_corner,
-                                        self._grid["spacing"], self._grid["counts"], 
-                                        charges, self._prmtop["LJ_SIGMA"])
 
-            self._write_to_nc(nc_handle, name, grid)
+            if name == "electrostatic":
+                grid = c_cal_potential_grid_electrostatic(self._crd,
+                                                    self._grid["x"], self._grid["y"], self._grid["z"],
+                                                    self._origin_crd, self._upper_most_corner_crd,
+                                                    self._upper_most_corner,
+                                                    self._grid["spacing"], self._grid["counts"], charges,
+                                                    self._prmtop["LJ_SIGMA"], self._debye_huckel_kappa)
+
+            elif name == "LJa":
+                grid = c_cal_potential_grid_LJa(self._crd,
+                                                self._grid["x"], self._grid["y"], self._grid["z"],
+                                                self._origin_crd, self._upper_most_corner_crd,
+                                                self._upper_most_corner,
+                                                self._grid["spacing"], self._grid["counts"], charges,
+                                                self._prmtop["LJ_SIGMA"])
+
+            elif name == "LJr":
+                grid = c_cal_potential_grid_LJr(self._crd,
+                                                self._grid["x"], self._grid["y"], self._grid["z"],
+                                                self._origin_crd, self._upper_most_corner_crd,
+                                                self._upper_most_corner,
+                                                self._grid["spacing"], self._grid["counts"], charges,
+                                                self._prmtop["LJ_SIGMA"])
+
+            elif name == "occupancy":
+                grid = c_cal_potential_grid_occupancy(self._crd,
+                                                self._grid["x"], self._grid["y"], self._grid["z"],
+                                                self._origin_crd, self._upper_most_corner_crd,
+                                                self._upper_most_corner,
+                                                self._grid["spacing"], self._grid["counts"],
+                                                self._prmtop["LJ_SIGMA"])
+
+            #self._write_to_nc(nc_handle, name, grid)
             self._set_grid_key_value(name, grid)
-            #self._set_grid_key_value(name, None)     # to save memory
+            # self._set_grid_key_value(name, None)     # to save memory
         return None
-    
+
     def _exact_values(self, coordinate):
         """
         coordinate: 3-array of float
@@ -609,37 +637,6 @@ class PotentialGrid(Grid):
                 values["LJa"] += -2. * self._prmtop["A_LJ_CHARGE"][atom_ind] / R**6
         
         return values
-    
-    def _trilinear_interpolation( self, grid_name, coordinate ):
-        """
-        grid_name is a str one of "electrostatic", "LJr" and "LJa"
-        coordinate is an array of three numbers
-        trilinear interpolation
-        https://en.wikipedia.org/wiki/Trilinear_interpolation
-        """
-        raise RuntimeError("Do not use, not tested yet")
-        assert len(coordinate) == 3, "coordinate must have len 3"
-        
-        eight_corners, nearest_ind, furthest_ind = self._containing_cube( coordinate ) # throw exception if coordinate is outside
-        lower_corner = eight_corners[0]
-        
-        (i0, j0, k0) = lower_corner
-        (i1, j1, k1) = (i0 + 1, j0 + 1, k0 + 1)
-        
-        xd = (coordinate[0] - self._grid["x"][i0,j0,k0]) / (self._grid["x"][i1,j1,k1] - self._grid["x"][i0,j0,k0])
-        yd = (coordinate[1] - self._grid["y"][i0,j0,k0]) / (self._grid["y"][i1,j1,k1] - self._grid["y"][i0,j0,k0])
-        zd = (coordinate[2] - self._grid["z"][i0,j0,k0]) / (self._grid["z"][i1,j1,k1] - self._grid["z"][i0,j0,k0])
-        
-        c00 = self._grid[grid_name][i0,j0,k0]*(1. - xd) + self._grid[grid_name][i1,j0,k0]*xd
-        c10 = self._grid[grid_name][i0,j1,k0]*(1. - xd) + self._grid[grid_name][i1,j1,k0]*xd
-        c01 = self._grid[grid_name][i0,j0,k1]*(1. - xd) + self._grid[grid_name][i1,j0,k1]*xd
-        c11 = self._grid[grid_name][i0,j1,k1]*(1. - xd) + self._grid[grid_name][i1,j1,k1]*xd
-        
-        c0 = c00*(1. - yd) + c10*yd
-        c1 = c01*(1. - yd) + c11*yd
-        
-        c = c0*(1. - zd) + c1*zd
-        return c
     
     def direct_energy(self, ligand_coordinate, ligand_charges):
         """
