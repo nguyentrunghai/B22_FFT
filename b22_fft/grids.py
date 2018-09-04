@@ -846,9 +846,7 @@ class ChargeGrid(Grid):
         if molecular_coord==None, self._crd is used
         """
         if molecular_coord is not None:
-            self._place_ligand_crd_in_grid(molecular_coord)
-        else:
-            self._move_ligand_to_lower_corner()  # this is just in case the self._crd is not at the right position
+            self._place_molecule_crd_in_grid(molecular_coord)
 
         self._cal_energies()
         return None
