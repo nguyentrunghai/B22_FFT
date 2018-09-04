@@ -6,7 +6,6 @@ import netcdf4 as nc
 
 from amber_par import AmberPrmtopLoader, InpcrdLoader
 
-from util import c_is_in_grid, cdistance, c_containing_cube
 from util import c_cal_charge_grid
 from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
 from util import c_cal_potential_grid_occupancy
@@ -51,7 +50,7 @@ class Grid(object):
         key:    str
         value:  any object
         """
-        print("setting " + key)
+        print("Setting " + key)
         self._grid[key] = value
         return None
     
@@ -64,6 +63,7 @@ class Grid(object):
          Experience says that 0.8 is good for protein-ligand calculations.
         :return: None
         """
+        print("Loading " + prmtop_file_name)
         assert 0.5 <= lj_sigma_scaling_factor <= 1.0, "lj_sigma_scaling_factor is out of allowed range"
         self._prmtop = AmberPrmtopLoader(prmtop_file_name).get_parm_for_grid_calculation()
 
@@ -211,7 +211,6 @@ class Grid(object):
 
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
-        self._initial_com = self._get_molecule_center_of_mass()
         return None
 
     def _move_molecule_to_lower_corner(self):
@@ -235,7 +234,6 @@ class Grid(object):
         displacement = self._origin_crd - lower_molecule_corner_crd
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
-        self._initial_com = self._get_molecule_center_of_mass()
         return None
 
     def get_grid_func_names(self):
@@ -330,23 +328,20 @@ class PotentialGrid(Grid):
         Grid.__init__(self)
         self._FFTs = {}
 
-        # save parameter to self._prmtop and "lj_sigma_scaling_factor" to self._grid["lj_sigma_scaling_factor"]
-        #
+        # save parameter to self._prmtop
+        # save "lj_sigma_scaling_factor" and "lj_depth_scaling_factor" to self._grid
         self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
 
         # Charges in potential grid will carry the dielectric
         self._prmtop["CHARGE_E_UNIT"] /= dielectric
         self._set_grid_key_value("dielectric", np.array([dielectric], dtype=float))
 
-        # Debye Huckel kappa
-        self._debye_huckel_kappa = self._cal_debye_huckel_kappa(ionic_strength, dielectric, temperature)
-        self._set_grid_key_value("ionic_strength", np.array([ionic_strength], dtype=float))
-        self._set_grid_key_value("temperature", np.array([temperature], dtype=float))
-
         if new_calculation:
 
+            print("Create new netCDF4 file: " + grid_nc_file)
+            self._nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
+
             self._load_inpcrd(inpcrd_file_name)
-            nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
 
             # save "origin", "d0", "d1", "d2", "spacing" and "counts"
             self._cal_grid_parameters(spacing, counts)
@@ -360,20 +355,30 @@ class PotentialGrid(Grid):
 
             # move molecule
             # _move_molecule_to_grid_center() also stores self._max_grid_indices (not use for potential grid)
-            # and self._initial_com
             if where_to_place_molecule == "center":
                 self._move_molecule_to_grid_center()
             elif where_to_place_molecule == "lower_corner":
                 self._move_molecule_to_lower_corner()
 
-            # TODO:
-            # Debye Huckel
-            # put everything that will be stored in self._grid
-            # store all the necessary to nc file
+            # store initial center of mass
+            self._initial_com = self._get_molecule_center_of_mass()
+            self._set_grid_key_value("initial_com", np.array(self._initial_com, dtype=float))
 
-            self._cal_potential_grids(nc_handle)
-            self._write_to_nc(nc_handle, "trans_crd", self._crd)
-            nc_handle.close()
+            self._write_to_nc(self._nc_handle, "crd_placed_in_grid", self._crd)
+
+            # Debye Huckel kappa
+            self._debye_huckel_kappa = self._cal_debye_huckel_kappa(ionic_strength, dielectric, temperature)
+            self._set_grid_key_value("ionic_strength", np.array([ionic_strength], dtype=float))
+            self._set_grid_key_value("temperature", np.array([temperature], dtype=float))
+            self._set_grid_key_value("debye_huckel_kappa", np.array([self._debye_huckel_kappa], dtype=float))
+
+            self._cal_potential_grids()
+
+            # save every thing to nc file
+            for key in self._grid:
+                self._write_to_nc(self._nc_handle, key, self._grid[key])
+
+            self._nc_handle.close()
 
         self._load_precomputed_grids(grid_nc_file, lj_sigma_scaling_factor)
 
@@ -577,38 +582,36 @@ class PotentialGrid(Grid):
             if name == "electrostatic":
                 grid = c_cal_potential_grid_electrostatic(self._crd,
                                                     self._grid["x"], self._grid["y"], self._grid["z"],
-                                                    self._origin_crd, self._upper_most_corner_crd,
-                                                    self._upper_most_corner,
+                                                    self._origin_crd,
+                                                    self._upper_most_corner_crd, self._upper_most_corner,
                                                     self._grid["spacing"], self._grid["counts"], charges,
                                                     self._prmtop["LJ_SIGMA"], self._debye_huckel_kappa)
 
             elif name == "LJa":
                 grid = c_cal_potential_grid_LJa(self._crd,
                                                 self._grid["x"], self._grid["y"], self._grid["z"],
-                                                self._origin_crd, self._upper_most_corner_crd,
-                                                self._upper_most_corner,
+                                                self._origin_crd,
+                                                self._upper_most_corner_crd, self._upper_most_corner,
                                                 self._grid["spacing"], self._grid["counts"], charges,
                                                 self._prmtop["LJ_SIGMA"])
 
             elif name == "LJr":
                 grid = c_cal_potential_grid_LJr(self._crd,
                                                 self._grid["x"], self._grid["y"], self._grid["z"],
-                                                self._origin_crd, self._upper_most_corner_crd,
-                                                self._upper_most_corner,
+                                                self._origin_crd,
+                                                self._upper_most_corner_crd, self._upper_most_corner,
                                                 self._grid["spacing"], self._grid["counts"], charges,
                                                 self._prmtop["LJ_SIGMA"])
 
             elif name == "occupancy":
                 grid = c_cal_potential_grid_occupancy(self._crd,
                                                 self._grid["x"], self._grid["y"], self._grid["z"],
-                                                self._origin_crd, self._upper_most_corner_crd,
-                                                self._upper_most_corner,
+                                                self._origin_crd,
+                                                self._upper_most_corner_crd, self._upper_most_corner,
                                                 self._grid["spacing"], self._grid["counts"],
                                                 self._prmtop["LJ_SIGMA"])
 
-            #self._write_to_nc(nc_handle, name, grid)
             self._set_grid_key_value(name, grid)
-            # self._set_grid_key_value(name, None)     # to save memory
         return None
 
     def _exact_values(self, coordinate):
