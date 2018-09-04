@@ -732,6 +732,7 @@ class ChargeGrid(Grid):
 
         self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
         self._load_inpcrd(inpcrd_file_name)
+
         # move molecule
         # also stores self._max_grid_indices (not use for potential grid)
         # and self._initial_com
@@ -788,87 +789,32 @@ class ChargeGrid(Grid):
         corr_func = np.real(corr_func)
         return corr_func
 
-    def _do_forward_fft(self, grid_name):
-        assert grid_name in self._grid_func_names, "%s is not an allowed grid name" % grid_name
-        grid = self._cal_charge_grid(grid_name)
-        self._set_grid_key_value(grid_name, grid)
-        forward_fft = np.fft.fftn(self._grid[grid_name])
-        self._set_grid_key_value(grid_name, None)  # to save memory
-        return forward_fft
-
-    def _cal_corr_funcs(self, grid_names):
-        """
-        :param grid_names: list of str
-        :return:
-        """
-        assert type(grid_names) == list, "grid_names must be a list"
-
-        grid_name = grid_names[0]
-        forward_fft = self._do_forward_fft(grid_name)
-        corr_func = self._rec_FFTs[grid_name] * forward_fft.conjugate()
-
-        for grid_name in grid_names[1:]:
-            forward_fft = self._do_forward_fft(grid_name)
-            corr_func += self._rec_FFTs[grid_name] * forward_fft.conjugate()
-
-        corr_func = np.fft.ifftn(corr_func)
-        corr_func = np.real(corr_func)
-        return corr_func
-
     def _cal_energies(self):
         """
         calculate interaction energies
-        store self._meaningful_energies (1-array) and self._meaningful_corners (2-array)
+        store self._meaningful_energies which is a dict of 1d-arrays
         meaningful means no boder-crossing and no clashing
-        TODO
         """
         max_i, max_j, max_k = self._max_grid_indices
 
-        corr_func = self._cal_corr_func("occupancy")
-        self._free_of_clash = (corr_func < 0.001)
-        self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j,
-                              0:max_k]  # exclude positions where ligand crosses border
+        occupancy_corr_func = self._cal_corr_func("occupancy")
+        self._free_of_clash = (occupancy_corr_func < 0.0001)
+        del(occupancy_corr_func) # save memory
 
-        self._meaningful_energies = np.zeros(self._grid["counts"], dtype=float)
-        if np.any(self._free_of_clash):
-            grid_names = [name for name in self._grid_func_names if name != "occupancy"]
-            for name in grid_names:
-                self._meaningful_energies += self._cal_corr_func(name)
+        # exclude positions where molecule crosses border
+        self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j, 0:max_k]
+        grid_names = [name for name in self._grid_func_names if name != "occupancy"]
 
-        self._meaningful_energies = self._meaningful_energies[0:max_i, 0:max_j,
-                                    0:max_k]  # exclude positions where ligand crosses border
+        self._meaningful_energies = {}
+        for name in grid_names:
+            # exclude positions where ligand crosses border
+            self._meaningful_energies[name] = self._cal_corr_func(name)[0:max_i, 0:max_j, 0:max_k]
 
-        self._meaningful_energies = self._meaningful_energies[
-            self._free_of_clash]  # exclude positions where ligand is in clash with receptor, become 1D array
-        self._number_of_meaningful_energies = self._meaningful_energies.shape[0]
+            # exclude positions where ligand is in clash with receptor, become 1D array
+            self._meaningful_energies[name] = self._meaningful_energies[name][self._free_of_clash]
 
-        return None
+        self._number_of_meaningful_energies = self._meaningful_energies[grid_names[0]].shape[0]
 
-    def _cal_energies_NOT_USED(self):
-        """
-        calculate interaction energies
-        store self._meaningful_energies (1-array) and self._meaningful_corners (2-array)
-        meaningful means no boder-crossing and no clashing
-        TODO
-        """
-        max_i, max_j, max_k = self._max_grid_indices
-
-        corr_func = self._cal_corr_func("occupancy")
-        self._free_of_clash = (corr_func < 0.001)
-        self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j,
-                              0:max_k]  # exclude positions where ligand crosses border
-
-        if np.any(self._free_of_clash):
-            grid_names = [name for name in self._grid_func_names if name != "occupancy"]
-            self._meaningful_energies = self._cal_corr_funcs(grid_names)
-        else:
-            self._meaningful_energies = np.zeros(self._grid["counts"], dtype=float)
-
-        self._meaningful_energies = self._meaningful_energies[0:max_i, 0:max_j,
-                                    0:max_k]  # exclude positions where ligand crosses border
-        self._meaningful_energies = self._meaningful_energies[
-            self._free_of_clash]  # exclude positions where ligand is in clash with receptor, become 1D array
-        self._number_of_meaningful_energies = self._meaningful_energies.shape[0]
         return None
 
     def _cal_meaningful_corners(self):
@@ -880,16 +826,17 @@ class ChargeGrid(Grid):
         corners = corners.transpose()
         return corners
 
-    def _place_ligand_crd_in_grid(self, molecular_coord):
+    def _place_molecule_crd_in_grid(self, molecular_coord):
         """
-        molecular_coord:    2-array, new liagnd coordinate
+        :param molecular_coord: 2d array of floats
+        :return: None
         """
         crd = np.array(molecular_coord, dtype=float)
         natoms = self._prmtop["POINTERS"]["NATOM"]
         if (crd.shape[0] != natoms) or (crd.shape[1] != 3):
             raise RuntimeError("Input coord does not have the correct shape.")
         self._crd = crd
-        self._move_ligand_to_lower_corner()
+        self._move_molecule_to_center_or_corner()
         return None
 
     def cal_grids(self, molecular_coord=None):
@@ -905,27 +852,6 @@ class ChargeGrid(Grid):
 
         self._cal_energies()
         return None
-
-    def get_bpmf(self, kB=0.001987204134799235, temperature=300.0):
-        """
-        use self._meaningful_energies to calculate and return exponential mean
-        """
-        if len(self._meaningful_energies) == 0:
-            return 0.
-
-        beta = 1. / temperature / kB
-        V_0 = 1661.
-
-        nr_samples = self.get_number_translations()
-        energies = -beta * self._meaningful_energies
-        e_max = energies.max()
-        exp_mean = np.exp(energies - e_max).sum() / nr_samples
-
-        bpmf = -temperature * kB * (np.log(exp_mean) + e_max)
-
-        V_binding = self.get_box_volume()
-        correction = -temperature * kB * np.log(V_binding / V_0 / 8 / np.pi ** 2)
-        return bpmf + correction
 
     def get_number_translations(self):
         return self._max_grid_indices.prod()
@@ -953,42 +879,3 @@ class ChargeGrid(Grid):
 
     def get_initial_com(self):
         return self._initial_com
-
-
-if __name__ == "__main__":
-    # do some test
-    rec_prmtop_file = "../examples/amber/t4_lysozyme/receptor_579.prmtop"
-    rec_inpcrd_file = "../examples/amber/t4_lysozyme/receptor_579.inpcrd"
-    grid_nc_file = "../examples/grid/t4_lysozyme/grid.nc"
-    lj_sigma_scaling_factor = 0.8
-    bsite_file = "../examples/amber/t4_lysozyme/measured_binding_site.py"
-    spacing = 0.25
-
-    rec_grid = RecGrid(rec_prmtop_file, lj_sigma_scaling_factor, rec_inpcrd_file, 
-                        bsite_file,
-                        grid_nc_file,
-                        new_calculation=True,
-                        spacing=spacing)
-    print("get_grid_func_names", rec_grid.get_grid_func_names())
-    print("get_grids", rec_grid.get_grids())
-    print("get_crd", rec_grid.get_crd())
-    print("get_prmtop", rec_grid.get_prmtop())
-    print("get_prmtop", rec_grid.get_charges())
-    print("get_natoms", rec_grid.get_natoms())
-    print("get_natoms", rec_grid.get_allowed_keys())
-
-    rec_grid.write_box("../examples/grid/t4_lysozyme/box.pdb")
-    rec_grid.write_pdb("../examples/grid/t4_lysozyme/test.pdb", "w")
-
-    lig_prmtop_file = "../examples/amber/benzene/ligand.prmtop"
-    lig_inpcrd_file = "../examples/amber/benzene/ligand.inpcrd"
-    lig_grid = LigGrid(lig_prmtop_file, lj_sigma_scaling_factor, lig_inpcrd_file, rec_grid)
-    lig_grid.cal_grids()
-    print("get_bpmf", lig_grid.get_bpmf())
-    print("get_number_translations", lig_grid.get_number_translations())
-    print("get_box_volume", lig_grid.get_box_volume())
-    print("get_meaningful_energies", lig_grid.get_meaningful_energies())
-    print("get_meaningful_corners", lig_grid.get_meaningful_corners())
-    print("set_meaningful_energies_to_none", lig_grid.set_meaningful_energies_to_none())
-    print("get_initial_com", lig_grid.get_initial_com())
-
