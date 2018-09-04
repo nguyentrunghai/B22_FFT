@@ -1,6 +1,8 @@
 
 from __future__ import print_function
 
+import os
+
 import numpy as np
 import netcdf4 as nc
 
@@ -85,6 +87,7 @@ class Grid(object):
         :param inpcrd_file_name: str
         :return: None
         """
+        print("Loading file: " + inpcrd_file_name)
         self._crd = InpcrdLoader(inpcrd_file_name).get_crd()
 
         # check if prmtop and inpcrd have the same number of atoms
@@ -192,6 +195,7 @@ class Grid(object):
         move the molecule to near the grid center
         store self._max_grid_indices and self._initial_com
         """
+        print("Move molecule to grid center.")
         lower_molecule_corner_crd = self._crd.min(axis=0)
         upper_molecule_corner_crd = self._crd.max(axis=0)
 
@@ -218,6 +222,7 @@ class Grid(object):
         move the molecule to near the grid lower corner
         store self._max_grid_indices and self._initial_com
         """
+        print("Move molecule to lower corner.")
         lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
 
@@ -341,9 +346,10 @@ class PotentialGrid(Grid):
             print("Create new netCDF4 file: " + grid_nc_file)
             self._nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
 
+            # coordinates stored in self._crd
             self._load_inpcrd(inpcrd_file_name)
 
-            # save "origin", "d0", "d1", "d2", "spacing" and "counts"
+            # save "origin", "d0", "d1", "d2", "spacing" and "counts" to self._grid
             self._cal_grid_parameters(spacing, counts)
 
             # save "x", "y" and "z" to self._grid
@@ -362,9 +368,10 @@ class PotentialGrid(Grid):
 
             # store initial center of mass
             self._initial_com = self._get_molecule_center_of_mass()
-            self._set_grid_key_value("initial_com", np.array(self._initial_com, dtype=float))
+            self._set_grid_key_value("initial_com", self._initial_com)
 
-            self._write_to_nc(self._nc_handle, "crd_placed_in_grid", self._crd)
+            # store max_grid_indices  self._max_grid_indices
+            self._set_grid_key_value("max_grid_indices", self._max_grid_indices)
 
             # Debye Huckel kappa
             self._debye_huckel_kappa = self._cal_debye_huckel_kappa(ionic_strength, dielectric, temperature)
@@ -375,6 +382,7 @@ class PotentialGrid(Grid):
             self._cal_potential_grids()
 
             # save every thing to nc file
+            self._write_to_nc(self._nc_handle, "crd_placed_in_grid", self._crd)
             for key in self._grid:
                 self._write_to_nc(self._nc_handle, key, self._grid[key])
 
@@ -382,11 +390,10 @@ class PotentialGrid(Grid):
 
         self._load_precomputed_grids(grid_nc_file, lj_sigma_scaling_factor)
 
-    def _load_precomputed_grids(self, grid_nc_file, lj_sigma_scaling_factor):
+    def _load_precomputed_grids(self, grid_nc_file):
         """
-        nc_file_name:   str
-        lj_sigma_scaling_factor: float, used for consistency check
-        load netCDF file, populate self._grid with all the data fields 
+        :param grid_nc_file: str, netCDF4 file name
+        :return: None
         """
         assert os.path.isfile(grid_nc_file), "%s does not exist" %grid_nc_file
 
@@ -536,7 +543,7 @@ class PotentialGrid(Grid):
         calculate grid coordinates (x,y,z) for each corner,
         save 'x', 'y', 'z' to self._grid
         """
-        print("calculating grid coordinates")
+        print("Calculating grid coordinates")
         #
         x = np.zeros(self._grid["counts"][0], dtype=float)
         y = np.zeros(self._grid["counts"][1], dtype=float)
