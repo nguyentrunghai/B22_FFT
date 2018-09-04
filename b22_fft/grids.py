@@ -629,67 +629,51 @@ class PotentialGrid(Grid):
 
     def _exact_values(self, coordinate):
         """
+        :param coordinate: ndarray of floats, shape = (3,)
+        :return: dict
+        """
+        """
         coordinate: 3-array of float
         calculate the exact "potential" value at any coordinate
         """
-        # TODO make sure parameters are correctly scaled before calculating potential
-        
         assert len(coordinate) == 3, "coordinate must have len 3"
         if not self._is_in_grid(coordinate):
-            raise RuntimeError("atom is outside grid even after pbc translated")
-        
+            raise RuntimeError("atom is outside grid")
+
+        energy_names = [name for name in self._grid_func_names if name != "occupancy"]
+
+        charges = {}
         values = {}
-        for name in self._grid_func_names:
-            if name != "occupancy":
-                values[name] = 0.
+        for name in energy_names:
+            charges[name] = self._get_charges(name)
+            values[name] = 0.
         
-        NATOM = self._prmtop["POINTERS"]["NATOM"]
-        for atom_ind in range(NATOM):
+        natoms = self._prmtop["POINTERS"]["NATOM"]
+        for atom_ind in range(natoms):
             dif = coordinate - self._crd[atom_ind]
             R = np.sqrt((dif*dif).sum())
             lj_diameter = self._prmtop["LJ_SIGMA"][atom_ind]
 
             if R > lj_diameter:
-                values["electrostatic"] +=  332.05221729 * self._prmtop["CHARGE_E_UNIT"][atom_ind] / R
-                values["LJr"] +=  self._prmtop["R_LJ_CHARGE"][atom_ind] / R**12
-                values["LJa"] += -2. * self._prmtop["A_LJ_CHARGE"][atom_ind] / R**6
+                values["electrostatic"] += charges["electrostatic"][atom_ind] / R
+                values["LJr"] += charges["LJr"][atom_ind] / R**12
+                values["LJa"] += charges["LJa"][atom_ind] / R**6
         
         return values
     
-    def direct_energy(self, ligand_coordinate, ligand_charges):
+    def direct_energy(self, other_molecule_crd, other_molecule_charges):
         """
-        :param ligand_coordinate: ndarray of shape (natoms, 3)
-        :param ligand_charges: ndarray of shape (3,)
-        :return: dic
+        :param other_molecule_crd: ndarray of float with shape (natoms, 3)
+        :param other_molecule_charges: ndarray of float with shape (3,)
+        :return: float
         """
-        assert len(ligand_coordinate) == len(ligand_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"
+        assert len(other_molecule_crd) == len(other_molecule_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"
         energy = 0.
-        for atom_ind in range(len(ligand_coordinate)):
-            potentials = self._exact_values(ligand_coordinate[atom_ind])
-            energy += potentials["electrostatic"]*ligand_charges["CHARGE_E_UNIT"][atom_ind]
-            energy += potentials["LJr"]*ligand_charges["R_LJ_CHARGE"][atom_ind]
-            energy += potentials["LJa"]*ligand_charges["A_LJ_CHARGE"][atom_ind]
-        return energy
-    
-    def interpolated_energy(self, ligand_coordinate, ligand_charges):
-        """
-        ligand_coordinate:  array of shape (natoms, 3)
-        ligand_charges: array of shape (3)
-        assume that ligand_coordinate is inside grid
-        """
-        raise RuntimeError("Do not use, not tested yet")
-        assert len(ligand_coordinate) == len(ligand_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"  
-        grid_names = [name for name in self._grid_func_names if name != "occupancy"]
-        energy = 0.
-        potentials = {}
-        for atom_ind in range(len(ligand_coordinate)):
-            for name in grid_names:
-                potentials[name] = self._trilinear_interpolation(name, ligand_coordinate[atom_ind])
-            
-            energy += potentials["electrostatic"]*ligand_charges["CHARGE_E_UNIT"][atom_ind]
-            energy += potentials["LJr"]*ligand_charges["R_LJ_CHARGE"][atom_ind]
-            energy += potentials["LJa"]*ligand_charges["A_LJ_CHARGE"][atom_ind]
-        
+        for atom_ind in range(len(other_molecule_crd)):
+            potentials = self._exact_values(other_molecule_crd[atom_ind])
+            energy += potentials["electrostatic"] * other_molecule_charges["CHARGE_E_UNIT"][atom_ind]
+            energy += potentials["LJr"] * other_molecule_charges["R_LJ_CHARGE"][atom_ind]
+            energy += potentials["LJa"] * other_molecule_charges["A_LJ_CHARGE"][atom_ind]
         return energy
 
     def get_FFTs(self):
