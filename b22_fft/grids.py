@@ -53,6 +53,9 @@ class Grid(object):
         value:  any object
         """
         print("Setting " + key)
+        if key in self._grid:
+            print(key + " exists. Overide!")
+
         self._grid[key] = value
         return None
     
@@ -193,7 +196,7 @@ class Grid(object):
     def _move_molecule_to_grid_center(self):
         """
         move the molecule to near the grid center
-        store self._max_grid_indices and self._initial_com
+        store self._max_grid_indices
         """
         print("Move molecule to grid center.")
         lower_molecule_corner_crd = self._crd.min(axis=0)
@@ -220,7 +223,7 @@ class Grid(object):
     def _move_molecule_to_lower_corner(self):
         """
         move the molecule to near the grid lower corner
-        store self._max_grid_indices and self._initial_com
+        store self._max_grid_indices
         """
         print("Move molecule to lower corner.")
         lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
@@ -388,7 +391,7 @@ class PotentialGrid(Grid):
 
             self._nc_handle.close()
 
-        self._load_precomputed_grids(grid_nc_file, lj_sigma_scaling_factor)
+        self._load_precomputed_grids(grid_nc_file)
 
     def _load_precomputed_grids(self, grid_nc_file):
         """
@@ -397,22 +400,23 @@ class PotentialGrid(Grid):
         """
         assert os.path.isfile(grid_nc_file), "%s does not exist" %grid_nc_file
 
-        print(grid_nc_file)
-        nc_handle = netCDF4.Dataset(grid_nc_file, "r")
-        keys = [key for key in self._grid_allowed_keys if key not in self._grid_func_names]
-        for key in keys:
-            self._set_grid_key_value(key, nc_handle.variables[key][:])
+        print("Loading precomputed grid in: " + grid_nc_file)
+        nc_handle = nc.Dataset(grid_nc_file, "r")
 
-        if self._grid["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
-            raise RuntimeError("lj_sigma_scaling_factor is %f but in %s, it is %f" %(
-                lj_sigma_scaling_factor, grid_nc_file, self._grid["lj_sigma_scaling_factor"][0]))
+        keys = nc_handle.variables.keys()
+        for key in keys:
+            if key not in self._grid_func_names:
+                self._set_grid_key_value(key, nc_handle.variables[key][:])
 
         self._initialize_convenient_para()
+        self._crd = self._grid["crd_placed_in_grid"]
+        self._initial_com = self._grid["initial_com"]
+        self._max_grid_indices = self._grid["max_grid_indices"]
+        self._debye_huckel_kappa = self._grid["debye_huckel_kappa"]
 
         natoms = self._prmtop["POINTERS"]["NATOM"]
-        if natoms != nc_handle.variables["trans_crd"].shape[0]:
-            raise RuntimeError("Number of atoms is wrong in %s"%nc_file_name)
-        self._crd = nc_handle.variables["trans_crd"][:]
+        if natoms != self._crd.shape[0]:
+            raise RuntimeError("Number of atoms is wrong in " + grid_nc_file)
 
         for key in self._grid_func_names:
             self._set_grid_key_value(key, nc_handle.variables[key][:])
@@ -454,9 +458,11 @@ class PotentialGrid(Grid):
         return kappa
 
     def _cal_FFT(self, name):
+        print("Doing FFT for %s" % name)
+
         if name not in self._grid_func_names:
-            raise RuntimeError("%s is not allowed.")
-        print("Doing FFT for %s"%name)
+            raise RuntimeError("%s is not allowed grid name.")
+
         FFT = np.fft.fftn(self._grid[name])
         return FFT
 
@@ -626,6 +632,8 @@ class PotentialGrid(Grid):
         coordinate: 3-array of float
         calculate the exact "potential" value at any coordinate
         """
+        # TODO make sure parameters are correctly scaled before calculating potential
+        
         assert len(coordinate) == 3, "coordinate must have len 3"
         if not self._is_in_grid(coordinate):
             raise RuntimeError("atom is outside grid even after pbc translated")
