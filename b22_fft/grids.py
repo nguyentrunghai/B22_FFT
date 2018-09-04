@@ -315,7 +315,7 @@ class PotentialGrid(Grid):
                  temperature=300.,
                  spacing=0.25,
                  counts=(1, 1, 1),
-                 where_to_place_molecule="lower_corner"):
+                 where_to_place_molecule="center"):
         """
         :param prmtop_file_name: str,  AMBER prmtop file
         :param inpcrd_file_name: str, AMBER coordinate file
@@ -364,7 +364,7 @@ class PotentialGrid(Grid):
             self._initialize_convenient_para()
 
             # move molecule
-            # _move_molecule_to_grid_center() also stores self._max_grid_indices (not use for potential grid)
+            # also stores self._max_grid_indices (not use for potential grid)
             if where_to_place_molecule == "center":
                 self._move_molecule_to_grid_center()
             elif where_to_place_molecule == "lower_corner":
@@ -694,55 +694,59 @@ class ChargeGrid(Grid):
     Calculate the "charge" part of the interaction energy.
     """
 
-    def __init__(self, prmtop_file_name, lj_sigma_scaling_factor,
-                 inpcrd_file_name, receptor_grid):
+    def __init__(self, prmtop_file_name,
+                 lj_sigma_scaling_factor,
+                 lj_depth_scaling_factor,
+                 inpcrd_file_name,
+                 potential_grid,
+                 where_to_place_molecule="lower_corner"):
         """
         :param prmtop_file_name: str, name of AMBER prmtop file
         :param lj_sigma_scaling_factor: float
+        :param lj_depth_scaling_factor: float
         :param inpcrd_file_name: str, name of AMBER coordinate file
-        :param receptor_grid: an instance of RecGrid class.
+        :param potential_grid: an instance of PotentialGrid.
+        :param where_to_place_molecule: str, one of the two ["center", "lower_corner"]
         """
+        assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
         Grid.__init__(self)
-        grid_data = receptor_grid.get_grids()
+
+        grid_data = potential_grid.get_grids()
+
         if grid_data["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
-            raise RuntimeError("lj_sigma_scaling_factor is %f but in receptor_grid, it is %f" % (
+            raise RuntimeError("lj_sigma_scaling_factor is %f but in potential_grid, it is %f" % (
                 lj_sigma_scaling_factor, grid_data["lj_sigma_scaling_factor"][0]))
 
+        if grid_data["lj_depth_scaling_factor"][0] != lj_depth_scaling_factor:
+            raise RuntimeError("lj_depth_scaling_factor is %f, but in potential_grid, it is %f" % (
+                lj_depth_scaling_factor, grid_data["lj_depth_scaling_factor"][0]))
+
         entries = [key for key in grid_data.keys() if key not in self._grid_func_names]
-        print("Copy entries from receptor_grid", entries)
+        print("Copy entries from receptor_grid \n{}".format(entries))
         for key in entries:
             self._set_grid_key_value(key, grid_data[key])
+
         self._initialize_convenient_para()
 
-        self._rec_FFTs = receptor_grid.get_FFTs()
+        self._rec_FFTs = potential_grid.get_FFTs()
 
-        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor)
+        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
         self._load_inpcrd(inpcrd_file_name)
-        self._move_ligand_to_lower_corner()
+        # move molecule
+        # also stores self._max_grid_indices (not use for potential grid)
+        # and self._initial_com
+        self._where_to_place_molecule = where_to_place_molecule
+        self._move_molecule_to_center_or_corner()
 
-    def _move_ligand_to_lower_corner(self):
-        """
-        move ligand to near the grid lower corner
-        store self._max_grid_indices and self._initial_com
-        """
-        spacing = self._grid["spacing"]
-        lower_ligand_corner = np.array([self._crd[:, i].min() for i in range(3)], dtype=float) - 1.5 * spacing
-        upper_ligand_corner = np.array([self._crd[:, i].max() for i in range(3)], dtype=float) + 1.5 * spacing
-        #
-        ligand_box_lenghts = upper_ligand_corner - lower_ligand_corner
-        if np.any(ligand_box_lenghts < 0):
-            raise RuntimeError("One of the ligand box lenghts are negative")
+    def _move_molecule_to_center_or_corner(self):
+        if self._where_to_place_molecule == "center":
+            self._move_molecule_to_grid_center()
 
-        max_grid_indices = np.ceil(ligand_box_lenghts / spacing)
-        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
-        if np.any(self._max_grid_indices <= 1):
-            raise RuntimeError("At least one of the max grid indices is <= one")
-
-        displacement = self._origin_crd - lower_ligand_corner
-        for atom_ind in range(len(self._crd)):
-            self._crd[atom_ind] += displacement
+        elif self._where_to_place_molecule == "lower_corner":
+            self._move_molecule_to_lower_corner()
 
         self._initial_com = self._get_molecule_center_of_mass()
+
         return None
 
     def _get_charges(self, name):
@@ -762,7 +766,7 @@ class ChargeGrid(Grid):
     def _cal_charge_grid(self, name):
         charges = self._get_charges(name)
         grid = c_cal_charge_grid(name, self._crd, charges, self._origin_crd,
-                                 self._uper_most_corner_crd, self._uper_most_corner,
+                                 self._upper_most_corner_crd, self._upper_most_corner,
                                  self._grid["spacing"], self._eight_corner_shifts, self._six_corner_shifts,
                                  self._grid["x"], self._grid["y"], self._grid["z"])
         return grid
