@@ -7,6 +7,7 @@ import numpy as np
 import netcdf4 as nc
 
 from amber_par import AmberPrmtopLoader, InpcrdLoader
+from pdb import write_pdb, write_box
 
 from util import c_cal_charge_grid
 from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
@@ -649,15 +650,15 @@ class PotentialGrid(Grid):
             values[name] = 0.
         
         natoms = self._prmtop["POINTERS"]["NATOM"]
-        for atom_ind in range(natoms):
-            dif = coordinate - self._crd[atom_ind]
+        for atom_ix in range(natoms):
+            dif = coordinate - self._crd[atom_ix]
             R = np.sqrt((dif*dif).sum())
-            lj_diameter = self._prmtop["LJ_SIGMA"][atom_ind]
+            lj_diameter = self._prmtop["LJ_SIGMA"][atom_ix]
 
             if R > lj_diameter:
-                values["electrostatic"] += charges["electrostatic"][atom_ind] / R
-                values["LJr"] += charges["LJr"][atom_ind] / R**12
-                values["LJa"] += charges["LJa"][atom_ind] / R**6
+                values["electrostatic"] += charges["electrostatic"][atom_ix] / R
+                values["LJr"] += charges["LJr"][atom_ix] / R**12
+                values["LJa"] += charges["LJa"][atom_ix] / R**6
         
         return values
     
@@ -680,11 +681,11 @@ class PotentialGrid(Grid):
         return self._FFTs
 
     def write_box(self, file_name):
-        IO.write_box(self, file_name)
+        write_box(self, file_name)
         return None
 
     def write_pdb(self, file_name, mode):
-        IO.write_pdb(self._prmtop, self._crd, file_name, mode)
+        write_pdb(self._prmtop, self._crd, file_name, mode)
         return None
 
 
