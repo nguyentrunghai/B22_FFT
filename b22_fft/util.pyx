@@ -372,6 +372,7 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
                                         np.ndarray[np.float64_t, ndim=1] spacing,
                                         np.ndarray[np.int64_t, ndim=1]   gird_counts,
                                         np.ndarray[np.float64_t, ndim=1] charges,
+                                        np.ndarray[np.float64_t, ndim=1] lj_sigma,
                                         double debye_huckel_kappa):
 
     cdef:
