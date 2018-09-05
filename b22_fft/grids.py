@@ -4,10 +4,11 @@ from __future__ import print_function
 import os
 
 import numpy as np
-import netcdf4 as nc
+import netCDF4 as nc
 
 from amber_par import AmberPrmtopLoader, InpcrdLoader
 from pdb import write_pdb, write_box
+from netcdf4 import write_to_nc
 
 from util import c_cal_charge_grid
 from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
@@ -263,6 +264,9 @@ class Grid(object):
     def get_natoms(self):
         return self._prmtop["POINTERS"]["NATOM"]
 
+    def get_initial_com(self):
+        return self._initial_com
+
 
 def debye_huckel_kappa(I_mole_per_litter, dielectric_constant, temperature):
     """
@@ -389,7 +393,8 @@ class PotentialGrid(Grid):
 
             self._nc_handle.close()
 
-        self._load_precomputed_grids(grid_nc_file)
+        else:
+            self._load_precomputed_grids(grid_nc_file)
 
     def _load_precomputed_grids(self, grid_nc_file):
         """
@@ -465,25 +470,7 @@ class PotentialGrid(Grid):
         return FFT
 
     def _write_to_nc(self, nc_handle, key, value):
-        print("Writing %s into nc file"%key)
-        # create dimensions
-        for dim in value.shape:
-            dim_name = "%d"%dim
-            if dim_name not in nc_handle.dimensions.keys():
-                nc_handle.createDimension(dim_name, dim)
-
-        # create variable
-        if value.dtype == int:
-            store_format = "i8"
-        elif value.dtype == float:
-            store_format = "f8"
-        else:
-            raise RuntimeError("unsupported dtype %s"%value.dtype)
-        dimensions = tuple(["%d"%dim for dim in value.shape])
-        nc_handle.createVariable(key, store_format, dimensions)
-
-        # save data
-        nc_handle.variables[key][:] = value
+        write_to_nc(nc_handle, key, value)
         return None
 
     def _cal_grid_parameters(self, spacing, counts):
@@ -708,20 +695,22 @@ class ChargeGrid(Grid):
         assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
         Grid.__init__(self)
 
-        grid_data = potential_grid.get_grids()
+        pot_grid_data = potential_grid.get_grids()
 
-        if grid_data["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
+        if pot_grid_data["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
             raise RuntimeError("lj_sigma_scaling_factor is %f, but in potential_grid, it is %f" % (
-                lj_sigma_scaling_factor, grid_data["lj_sigma_scaling_factor"][0]))
+                lj_sigma_scaling_factor, pot_grid_data["lj_sigma_scaling_factor"][0]))
 
-        if grid_data["lj_depth_scaling_factor"][0] != lj_depth_scaling_factor:
+        if pot_grid_data["lj_depth_scaling_factor"][0] != lj_depth_scaling_factor:
             raise RuntimeError("lj_depth_scaling_factor is %f, but in potential_grid, it is %f" % (
-                lj_depth_scaling_factor, grid_data["lj_depth_scaling_factor"][0]))
+                lj_depth_scaling_factor, pot_grid_data["lj_depth_scaling_factor"][0]))
 
-        entries = [key for key in grid_data.keys() if key not in self._grid_func_names]
+        exclude_entries = self._grid_func_names + ["initial_com", "max_grid_indices", "crd_placed_in_grid"]
+        entries = [key for key in pot_grid_data.keys() if key not in exclude_entries]
+
         print("Copy entries from receptor_grid \n{}".format(entries))
         for key in entries:
-            self._set_grid_key_value(key, grid_data[key])
+            self._set_grid_key_value(key, pot_grid_data[key])
 
         self._initialize_convenient_para()
 
@@ -881,5 +870,3 @@ class ChargeGrid(Grid):
         self._meaningful_energies = None
         return None
 
-    def get_initial_com(self):
-        return self._initial_com
