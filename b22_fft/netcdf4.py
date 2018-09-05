@@ -51,3 +51,26 @@ def write_nc(data, nc_file_name, exclude=()):
     for key in keys:
         out_nc.variables[key][:] = data[key]
     return out_nc
+
+
+def write_to_nc(nc_handle, key, value):
+    print("Writing %s into nc file"%key)
+    # create dimensions
+    for dim in value.shape:
+        dim_name = "%d"%dim
+        if dim_name not in nc_handle.dimensions.keys():
+            nc_handle.createDimension(dim_name, dim)
+
+    # create variable
+    if value.dtype == int:
+        store_format = "i8"
+    elif value.dtype == float:
+        store_format = "f8"
+    else:
+        raise RuntimeError("unsupported dtype %s"%value.dtype)
+    dimensions = tuple(["%d"%dim for dim in value.shape])
+    nc_handle.createVariable(key, store_format, dimensions)
+
+    # save data
+    nc_handle.variables[key][:] = value
+    return None
