@@ -102,5 +102,15 @@ class FFTSampling(object):
                 self._write_to_nc(key + key_suffix, energies[key])
 
             crd = self._char_grid.get_crd()
-            self._write_to_nc("crd" + key_suffix, crd)
+            self._write_to_nc("char_crd" + key_suffix, crd)
+
+            initial_com = self._char_grid.get_initial_com()
+            self._write_to_nc("char_initial_com" + key_suffix, initial_com)
+
+            trans_corners = self._char_grid.get_meaningful_corners()
+            self._write_to_nc("char_trans_corners" + key_suffix, trans_corners)
+
+        print("Done with fft sampling, closing the nc file.")
+        self._nc_handle.close()
+        return None
 
