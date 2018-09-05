@@ -591,8 +591,8 @@ def c_cal_charge_grid(  str name,
                         np.ndarray[np.float64_t, ndim=2] crd,
                         np.ndarray[np.float64_t, ndim=1] charges,
                         np.ndarray[np.float64_t, ndim=1] origin_crd,
-                        np.ndarray[np.float64_t, ndim=1] uper_most_corner_crd,
-                        np.ndarray[np.int64_t, ndim=1]   uper_most_corner,
+                        np.ndarray[np.float64_t, ndim=1] upper_most_corner_crd,
+                        np.ndarray[np.int64_t, ndim=1]   upper_most_corner,
                         np.ndarray[np.float64_t, ndim=1] spacing,
                         np.ndarray[np.int64_t, ndim=2]   eight_corner_shifts,
                         np.ndarray[np.int64_t, ndim=2]   six_corner_shifts,
@@ -619,8 +619,8 @@ def c_cal_charge_grid(  str name,
             atom_coordinate = crd[atom_ind]
             charge = charges[atom_ind]
             ten_corners, distributed_charges = c_distr_charge_one_atom( atom_coordinate, charge,
-                                                                    origin_crd, uper_most_corner_crd,
-                                                                    uper_most_corner, spacing,
+                                                                    origin_crd, upper_most_corner_crd,
+                                                                    upper_most_corner, spacing,
                                                                     eight_corner_shifts, six_corner_shifts,
                                                                     grid_x, grid_y, grid_z)
             for i in range(len(ten_corners)):
@@ -629,8 +629,8 @@ def c_cal_charge_grid(  str name,
     else:
         for atom_ind in range(natoms):
             atom_coordinate = crd[atom_ind]
-            ten_corners = c_ten_corners(atom_coordinate, origin_crd, uper_most_corner_crd,
-                                    uper_most_corner, spacing, eight_corner_shifts, six_corner_shifts,
+            ten_corners = c_ten_corners(atom_coordinate, origin_crd, upper_most_corner_crd,
+                                    upper_most_corner, spacing, eight_corner_shifts, six_corner_shifts,
                                     grid_x, grid_y, grid_z )
             for i in range(len(ten_corners)):
                 l, m, n = ten_corners[i]
