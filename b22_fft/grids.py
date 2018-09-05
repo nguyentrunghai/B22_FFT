@@ -22,9 +22,6 @@ class Grid(object):
     def __init__(self):
         self._grid = {}
 
-        # TODO add surface
-        # TODO No need surface for now
-        # TODO Dont need allowed keys
         self._grid_func_names = ("electrostatic", "LJr", "LJa", "occupancy")
 
         # keys to be stored in the result nc file
@@ -50,8 +47,9 @@ class Grid(object):
     
     def _set_grid_key_value(self, key, value):
         """
-        key:    str
-        value:  any object
+        :param key: str
+        :param value: any object
+        :return: None
         """
         print("Setting " + key)
         if key in self._grid:
@@ -66,7 +64,6 @@ class Grid(object):
         :param lj_sigma_scaling_factor: float, must have value in [0.5, 1.0].
         It is stored in self._grid["lj_sigma_scaling_factor"] as
         a array of shape (1,) for reason of saving to nc file.
-         Experience says that 0.8 is good for protein-ligand calculations.
         :return: None
         """
         print("Loading " + prmtop_file_name)
@@ -695,17 +692,17 @@ class ChargeGrid(Grid):
     """
 
     def __init__(self, prmtop_file_name,
-                 lj_sigma_scaling_factor,
-                 lj_depth_scaling_factor,
                  inpcrd_file_name,
                  potential_grid,
+                 lj_sigma_scaling_factor=1.,
+                 lj_depth_scaling_factor=1.,
                  where_to_place_molecule="lower_corner"):
         """
         :param prmtop_file_name: str, name of AMBER prmtop file
-        :param lj_sigma_scaling_factor: float
-        :param lj_depth_scaling_factor: float
         :param inpcrd_file_name: str, name of AMBER coordinate file
         :param potential_grid: an instance of PotentialGrid.
+        :param lj_sigma_scaling_factor: float
+        :param lj_depth_scaling_factor: float
         :param where_to_place_molecule: str, one of the two ["center", "lower_corner"]
         """
         assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
@@ -714,7 +711,7 @@ class ChargeGrid(Grid):
         grid_data = potential_grid.get_grids()
 
         if grid_data["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
-            raise RuntimeError("lj_sigma_scaling_factor is %f but in potential_grid, it is %f" % (
+            raise RuntimeError("lj_sigma_scaling_factor is %f, but in potential_grid, it is %f" % (
                 lj_sigma_scaling_factor, grid_data["lj_sigma_scaling_factor"][0]))
 
         if grid_data["lj_depth_scaling_factor"][0] != lj_depth_scaling_factor:
@@ -778,11 +775,14 @@ class ChargeGrid(Grid):
         :return: fft correlation function
         """
         assert grid_name in self._grid_func_names, "%s is not an allowed grid name" % grid_name
-        grid = self._cal_charge_grid(grid_name)
 
-        self._set_grid_key_value(grid_name, grid)
-        corr_func = np.fft.fftn(self._grid[grid_name])
-        self._set_grid_key_value(grid_name, None)  # to save memory
+        #grid = self._cal_charge_grid(grid_name)
+
+        #self._set_grid_key_value(grid_name, grid)
+        #corr_func = np.fft.fftn(self._grid[grid_name])
+        #self._set_grid_key_value(grid_name, None)  # to save memory
+
+        corr_func = np.fft.fftn( self._cal_charge_grid(grid_name) )
 
         corr_func = corr_func.conjugate()
         corr_func = np.fft.ifftn(self._rec_FFTs[grid_name] * corr_func)
@@ -797,15 +797,19 @@ class ChargeGrid(Grid):
         """
         max_i, max_j, max_k = self._max_grid_indices
 
-        occupancy_corr_func = self._cal_corr_func("occupancy")
-        self._free_of_clash = (occupancy_corr_func < 0.0001)
-        del(occupancy_corr_func) # save memory
+        #occupancy_corr_func = self._cal_corr_func("occupancy")
+        #self._free_of_clash = (occupancy_corr_func < 0.0001)
+        #del(occupancy_corr_func) # save memory
+
+        self._free_of_clash = self._cal_corr_func("occupancy")
+        self._free_of_clash = (self._free_of_clash < 0.0001)
 
         # exclude positions where molecule crosses border
         self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j, 0:max_k]
-        grid_names = [name for name in self._grid_func_names if name != "occupancy"]
 
+        grid_names = [name for name in self._grid_func_names if name != "occupancy"]
         self._meaningful_energies = {}
+
         for name in grid_names:
             # exclude positions where ligand crosses border
             self._meaningful_energies[name] = self._cal_corr_func(name)[0:max_i, 0:max_j, 0:max_k]
@@ -833,8 +837,10 @@ class ChargeGrid(Grid):
         """
         crd = np.array(molecular_coord, dtype=float)
         natoms = self._prmtop["POINTERS"]["NATOM"]
+
         if (crd.shape[0] != natoms) or (crd.shape[1] != 3):
             raise RuntimeError("Input coord does not have the correct shape.")
+
         self._crd = crd
         self._move_molecule_to_center_or_corner()
         return None
