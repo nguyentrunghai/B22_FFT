@@ -276,3 +276,22 @@ class InpcrdLoader(object):
         return self._crd
 
 
+def array_2_inpcrd(crd):
+    """
+    :param crd: ndarray with shape (natoms, 3)
+    :return: str, which can be written to inpcrd file
+    """
+    assert len(crd.shape) == 2, "crd must be of 2D"
+    assert crd.shape[1] == 3, "crd last dimension must be 3"
+
+    out_str = """default_name\n"""
+    out_str += """%6d\n"""%crd.shape[0]
+    for i in range(crd.shape[0]):
+        x, y, z = crd[i]
+        out_str += """%12.7f%12.7f%12.7f"""%(x, y, z)
+        if (i+1)%2 == 0:
+            out_str += """\n"""
+    return out_str
+
+
+
