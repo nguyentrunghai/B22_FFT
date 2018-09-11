@@ -2,7 +2,7 @@
 import numpy as np
 import netCDF4
 
-from IO import InpcrdLoad
+from amber_par import InpcrdLoader
 
 
 def _rotation_matrix(u):
@@ -75,7 +75,7 @@ def systematic_gen_rotation(ligand_crd, total_count, output_nc):
     count:          int, total number of rotations
     output_nc:      str, name of output file
     """
-    initial_crd = InpcrdLoad(ligand_crd).get_coordinates()
+    initial_crd = InpcrdLoader(ligand_crd).get_coordinates()
     initial_crd = _move_molecule_to_origin(initial_crd)
 
     total_count = np.ceil( total_count**(1./3) )
@@ -107,7 +107,7 @@ def random_gen_rotation(ligand_crd, total_count, output_nc):
     total_count:    int, total number of rotations
     output_nc:      str, name of output file
     """
-    initial_crd = InpcrdLoad(ligand_crd).get_coordinates()
+    initial_crd = InpcrdLoader(ligand_crd).get_coordinates()
     initial_crd = _move_molecule_to_origin(initial_crd)
 
     print("Generating total %d rotations"%total_count)
