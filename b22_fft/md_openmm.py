@@ -15,7 +15,7 @@ import simtk.unit
 
 from rotation import random_rotation
 from amber_par import array_2_inpcrd
-from pdb import write_pdb
+from _pdb import write_pdb
 
 openmm_solvent_models = {  "OpenMM_Gas":None,
                             "OpenMM_GBn":simtk.openmm.app.GBn,
@@ -89,7 +89,7 @@ class OpenMM_MD(object):
 
             if inpcrd_prefix is not None:
                 inpcrd_str = array_2_inpcrd(conf)
-                open(inpcrd_prefix + "_%d.inpcrd", "w").write(inpcrd_str)
+                open(inpcrd_prefix + "_%d.inpcrd"%iteration, "w").write(inpcrd_str)
 
             if pdb_out is not None:
                 write_pdb(self._prmtop_file, conf, pdb_out, "a")
