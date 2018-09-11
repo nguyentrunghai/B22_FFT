@@ -7,7 +7,7 @@ import numpy as np
 import netCDF4 as nc
 
 from amber_par import AmberPrmtopLoader, InpcrdLoader
-from pdb import write_pdb, write_box
+from _pdb import write_pdb, write_box
 from netcdf4 import write_to_nc
 
 from util import c_cal_charge_grid
@@ -196,20 +196,15 @@ class Grid(object):
         """
         move the molecule to near the grid center
         store self._max_grid_indices
+        TODO bugs
         """
         print("Move molecule to grid center.")
-        lower_molecule_corner_crd = self._crd.min(axis=0)
-        upper_molecule_corner_crd = self._crd.max(axis=0)
 
-        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
-        if np.any(molecule_box_lengths < 0):
-            raise RuntimeError("One of the molecule box lengths are negative")
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
-        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
-        # self._max_grid_indices is how far it can step before moving out of the box
-        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
-        if np.any(self._max_grid_indices <= 1):
-            raise RuntimeError("At least one of the max grid indices is <= one")
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        print("Before moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_center = (lower_molecule_corner_crd + upper_molecule_corner_crd) / 2.
         grid_center = (self._origin_crd + self._upper_most_corner_crd) / 2.
@@ -217,6 +212,25 @@ class Grid(object):
 
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
+
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
+
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
+
+        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
+        if np.any(molecule_box_lengths < 0):
+            raise RuntimeError("One of the molecule box lengths are negative")
+
+        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
+        print("max_grid_indices", max_grid_indices)
+
+        # self._max_grid_indices is how far it can step before moving out of the box
+        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
+        if np.any(self._max_grid_indices <= 1):
+            raise RuntimeError("At least one of the max grid indices is <= one")
+
         return None
 
     def _move_molecule_to_lower_corner(self):
@@ -225,8 +239,18 @@ class Grid(object):
         store self._max_grid_indices
         """
         print("Move molecule to lower corner.")
+
         lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
+
+        displacement = self._origin_crd - lower_molecule_corner_crd
+        print("Molecule is translated by ", displacement)
+        self._crd += displacement.reshape(1, 3)
+
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
         upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        print("After moving, upper_molecule_corner_crd at", lower_molecule_corner_crd)
 
         molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
         if np.any(molecule_box_lengths < 0):
@@ -238,9 +262,6 @@ class Grid(object):
         if np.any(self._max_grid_indices <= 1):
             raise RuntimeError("At least one of the max grid indices is <= one")
 
-        displacement = self._origin_crd - lower_molecule_corner_crd
-        print("Molecule is translated by ", displacement)
-        self._crd += displacement.reshape(1, 3)
         return None
 
     def get_grid_func_names(self):
