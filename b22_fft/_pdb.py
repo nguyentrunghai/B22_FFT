@@ -1,6 +1,7 @@
 """
 define function to read, write pdb files
 """
+import numpy as np
 
 from amber_par import AmberPrmtopLoader
 
