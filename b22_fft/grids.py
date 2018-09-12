@@ -53,6 +53,9 @@ class Grid(object):
         :return: None
         """
         print("Setting " + key)
+        if value.ndim == 1:
+            print(value)
+
         if key in self._grid:
             print(key + " exists. Overide!")
 
@@ -200,10 +203,10 @@ class Grid(object):
         """
         print("Move molecule to grid center.")
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
         print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
         print("Before moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_center = (lower_molecule_corner_crd + upper_molecule_corner_crd) / 2.
@@ -213,10 +216,10 @@ class Grid(object):
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
         print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
         print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
@@ -240,16 +243,16 @@ class Grid(object):
         """
         print("Move molecule to lower corner.")
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
         print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
         displacement = self._origin_crd - lower_molecule_corner_crd
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
         print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
         print("After moving, upper_molecule_corner_crd at", lower_molecule_corner_crd)
 
         molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
