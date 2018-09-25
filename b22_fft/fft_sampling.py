@@ -98,8 +98,12 @@ class FFTSampling(object):
             key_suffix = "_%d"%step
 
             energies = self._char_grid.get_meaningful_energies()
-            for key in energies:
-                self._write_to_nc(key + key_suffix, energies[key])
+            #for key in energies:
+            #    self._write_to_nc(key + key_suffix, energies[key])
+
+            self._write_to_nc("electrostatic" + key_suffix, energies["electrostatic"])
+            # combine both repulsive and attractive LJ terms
+            self._write_to_nc("LJ_RA" + key_suffix, energies["LJr"] + energies["LJa"])
 
             crd = self._char_grid.get_crd()
             self._write_to_nc("char_crd" + key_suffix, crd)
