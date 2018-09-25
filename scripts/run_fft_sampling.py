@@ -16,16 +16,16 @@ import netCDF4 as nc
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument( "--pot_prmtop_file",   type=str, default="/home/nguyen76/B22/Leap/protein_ph9p4.prmtop")
-parser.add_argument( "--pot_inpcrd_file",   type=str, default="/home/nguyen76/B22/md/protein_1/traj_0.inpcrd")
-parser.add_argument( "--pot_grid_nc_file",  type=str, default="/home/nguyen76/B22/pot_grids/0.1M/grid.nc")
+parser.add_argument( "--pot_prmtop_file",   type=str, default="protein_1.prmtop")
+parser.add_argument( "--pot_inpcrd_file",   type=str, default="protein_1.inpcrd")
+parser.add_argument( "--pot_grid_nc_file",  type=str, default="grid.nc")
 
-parser.add_argument( "--char_prmtop_file",   type=str, default="/home/nguyen76/B22/Leap/protein_ph9p4.prmtop")
-parser.add_argument( "--char_inpcrd_file",   type=str, default="/home/nguyen76/B22/md/protein_2/traj_0.inpcrd")
+parser.add_argument( "--char_prmtop_file",   type=str, default="protein_2.prmtop")
+parser.add_argument( "--char_inpcrd_file",   type=str, default="protein_2.inpcrd")
 
-parser.add_argument( "--char_conf_ensemble_file",   type=str, default="/home/nguyen76/B22/md/protein_2/traj.nc")
+parser.add_argument( "--char_conf_ensemble_file",   type=str, default="traj.nc")
 parser.add_argument( "--begin_conf",   type=int, default=0)
-parser.add_argument( "--end_conf",     type=str, default=2)
+parser.add_argument( "--end_conf",     type=int, default=2)
 
 parser.add_argument( "--lj_sigma_scaling_factor",   type=float, default=1.0)
 parser.add_argument( "--lj_depth_scaling_factor",   type=float, default=1.0)
