@@ -63,7 +63,10 @@ def write_to_nc(nc_handle, key, value):
 
     # create variable
     if value.dtype == int:
-        store_format = "i8"
+        #store_format = "i8"
+        # use this because char_trans_corners store a lot of small nonnegative numbers
+        # u2 is 16-bit unsigned integer : http://unidata.github.io/netcdf4-python/#section4
+        store_format = "u2"
     elif value.dtype == float:
         store_format = "f8"
     else:
