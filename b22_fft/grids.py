@@ -53,8 +53,9 @@ class Grid(object):
         :return: None
         """
         print("Setting " + key)
-        if value.ndim == 1:
-            print(value)
+        if hasattr(value, "ndim"):
+            if value.ndim == 1:
+                print(value)
 
         if key in self._grid:
             print(key + " exists. Overide!")
@@ -199,14 +200,14 @@ class Grid(object):
         """
         move the molecule to near the grid center
         store self._max_grid_indices
-        TODO bugs
+        TODO change 0.5 to 1.5
         """
         print("Move molecule to grid center.")
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
         print("Before moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_center = (lower_molecule_corner_crd + upper_molecule_corner_crd) / 2.
@@ -216,10 +217,10 @@ class Grid(object):
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
         print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
@@ -240,20 +241,21 @@ class Grid(object):
         """
         move the molecule to near the grid lower corner
         store self._max_grid_indices
+        TODO change 0.5 to 1.5
         """
         print("Move molecule to lower corner.")
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
         displacement = self._origin_crd - lower_molecule_corner_crd
         print("Molecule is translated by ", displacement)
         self._crd += displacement.reshape(1, 3)
 
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 0.5 * self._spacing
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 0.5 * self._spacing
-        print("After moving, upper_molecule_corner_crd at", lower_molecule_corner_crd)
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
 
         molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
         if np.any(molecule_box_lengths < 0):
@@ -729,7 +731,7 @@ class ChargeGrid(Grid):
             raise RuntimeError("lj_depth_scaling_factor is %f, but in potential_grid, it is %f" % (
                 lj_depth_scaling_factor, pot_grid_data["lj_depth_scaling_factor"][0]))
 
-        exclude_entries = self._grid_func_names + ["initial_com", "max_grid_indices", "crd_placed_in_grid"]
+        exclude_entries = self._grid_func_names + ("initial_com", "max_grid_indices", "crd_placed_in_grid")
         entries = [key for key in pot_grid_data.keys() if key not in exclude_entries]
 
         print("Copy entries from receptor_grid \n{}".format(entries))
