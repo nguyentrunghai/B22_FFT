@@ -281,11 +281,11 @@ class Grid(object):
     def get_prmtop(self):
         return self._prmtop
     
-    def get_charges(self):
-        charges = dict()
-        for key in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
-            charges[key] = self._prmtop[key]
-        return charges
+    #def get_charges(self):
+    #    charges = dict()
+    #    for key in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
+    #        charges[key] = self._prmtop[key]
+    #    return charges
 
     def get_natoms(self):
         return self._prmtop["POINTERS"]["NATOM"]
@@ -642,12 +642,10 @@ class PotentialGrid(Grid):
         """
         :param coordinate: ndarray of floats, shape = (3,)
         :return: dict
+
+        TODO: add debye huckel to electrostatics
         """
-        """
-        coordinate: 3-array of float
-        calculate the exact "potential" value at any coordinate
-        """
-        assert len(coordinate) == 3, "coordinate must have len 3"
+        assert (coordinate.dim == 1) and (coordinate.shape[0] == 3), "coordinate must be 1d array of len 3"
         if not self._is_in_grid(coordinate):
             raise RuntimeError("atom is outside grid")
 
@@ -666,7 +664,7 @@ class PotentialGrid(Grid):
             lj_diameter = self._prmtop["LJ_SIGMA"][atom_ix]
 
             if R > lj_diameter:
-                values["electrostatic"] += charges["electrostatic"][atom_ix] / R
+                values["electrostatic"] += np.exp(-self._debye_huckel_kappa * R) * charges["electrostatic"][atom_ix] / R
                 values["LJr"] += charges["LJr"][atom_ix] / R**12
                 values["LJa"] += charges["LJa"][atom_ix] / R**6
         
@@ -675,7 +673,7 @@ class PotentialGrid(Grid):
     def direct_energy(self, other_molecule_crd, other_molecule_charges):
         """
         :param other_molecule_crd: ndarray of float with shape (natoms, 3)
-        :param other_molecule_charges: ndarray of float with shape (3,)
+        :param other_molecule_charges: dict charge_name -> ndarray of shape (natoms,)
         :return: float
         """
         assert len(other_molecule_crd) == len(other_molecule_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"
@@ -895,4 +893,10 @@ class ChargeGrid(Grid):
     def set_meaningful_energies_to_none(self):
         self._meaningful_energies = None
         return None
+
+    def get_charges(self):
+#    charges = dict()
+#    for key in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
+#        charges[key] = self._prmtop[key]
+#    return charges
 
