@@ -123,5 +123,5 @@ class FFTSampling(object):
 
     def get_char_grid(self):
         return self._char_grid
-    
+
 
