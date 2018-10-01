@@ -58,6 +58,9 @@ spacing = pot_grid.get_grids()['spacing']
 char_grid = sampler.get_char_grid()
 print("COM of the the molecule used to map charge grid: {}".format(char_grid.get_initial_com()))
 
+char_charges = char_grid.get_charges()
+
+
 fft_data = nc.Dataset(args.fft_sample_nc, "r")
 
 pot_initial_com = fft_data.variables["pot_initial_com"][:]
@@ -79,7 +82,7 @@ sel_indices = np.random.choice(n_data_points, size=args.n_energy_samples, replac
 fft_energies = fft_data.variables['electrostatic_0'][sel_indices] + fft_data.variables['LJ_RA_0'][sel_indices]
 trans_corners = fft_data.variables['char_trans_corners_0'][sel_indices]
 
-direct_energies = []
+direct_energies = np.zeros([args.n_energy_samples])
 for i, corner in enumerate(trans_corners):
     move_by = corner * spacing
     moved_char_crd = char_crd_0 + move_by
@@ -88,5 +91,12 @@ for i, corner in enumerate(trans_corners):
     if i == 0:
         mode = "w"
     write_pdb(char_grid.get_prmtop(), moved_char_crd, "char_molecule_move_around.pdb", mode)
+
+    print("Calculating for conf {}".format(i))
+
+    direct_energies[i] = pot_grid.direct_energy(moved_char_crd, char_charges)
+
+    print("{} Vs {}".format(fft_energies[i], direct_energies[i]))
+
 
 
