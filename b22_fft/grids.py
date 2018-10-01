@@ -678,11 +678,11 @@ class PotentialGrid(Grid):
         """
         assert len(other_molecule_crd) == len(other_molecule_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"
         energy = 0.
-        for atom_ind in range(len(other_molecule_crd)):
-            potentials = self._exact_values(other_molecule_crd[atom_ind])
-            energy += potentials["electrostatic"] * other_molecule_charges["CHARGE_E_UNIT"][atom_ind]
-            energy += potentials["LJr"] * other_molecule_charges["R_LJ_CHARGE"][atom_ind]
-            energy += potentials["LJa"] * other_molecule_charges["A_LJ_CHARGE"][atom_ind]
+        for atom_ix in range(len(other_molecule_crd)):
+            potentials = self._exact_values(other_molecule_crd[atom_ix])
+            energy += potentials["electrostatic"] * other_molecule_charges["CHARGE_E_UNIT"][atom_ix]
+            energy += potentials["LJr"] * other_molecule_charges["R_LJ_CHARGE"][atom_ix]
+            energy += potentials["LJa"] * other_molecule_charges["A_LJ_CHARGE"][atom_ix]
         return energy
 
     def get_FFTs(self):
@@ -738,7 +738,7 @@ class ChargeGrid(Grid):
 
         self._initialize_convenient_para()
 
-        self._rec_FFTs = potential_grid.get_FFTs()
+        self._pot_grid_FFTs = potential_grid.get_FFTs()
 
         self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
         self._load_inpcrd(inpcrd_file_name)
@@ -798,7 +798,7 @@ class ChargeGrid(Grid):
         corr_func = np.fft.fftn( self._cal_charge_grid(grid_name) )
 
         corr_func = corr_func.conjugate()
-        corr_func = np.fft.ifftn(self._rec_FFTs[grid_name] * corr_func)
+        corr_func = np.fft.ifftn(self._pot_grid_FFTs[grid_name] * corr_func)
         corr_func = np.real(corr_func)
         return corr_func
 
@@ -895,8 +895,9 @@ class ChargeGrid(Grid):
         return None
 
     def get_charges(self):
-#    charges = dict()
-#    for key in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
-#        charges[key] = self._prmtop[key]
-#    return charges
+        charges = dict()
+        for name in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
+            charges[name] = self._get_charges(name)
+        return charges
+
 
