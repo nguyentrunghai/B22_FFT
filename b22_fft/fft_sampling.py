@@ -33,11 +33,11 @@ class FFTSampling(object):
         :param where_to_place_molecule_for_char_grids: str
         """
 
-        pot_grid = PotentialGrid(pot_prmtop, pot_inpcrd, pot_grid_nc, new_calculation=False)
-        self._pot_crd = pot_grid.get_crd()
-        self._pot_initial_com = pot_grid.get_initial_com()
+        self._pot_grid = PotentialGrid(pot_prmtop, pot_inpcrd, pot_grid_nc, new_calculation=False)
+        self._pot_crd = self._pot_grid.get_crd()
+        self._pot_initial_com = self._pot_grid.get_initial_com()
 
-        self._char_grid = ChargeGrid(char_prmtop, char_inpcrd, pot_grid,
+        self._char_grid = ChargeGrid(char_prmtop, char_inpcrd, self._pot_grid,
                                      lj_sigma_scaling_factor=lj_sigma_scaling_factor,
                                      lj_depth_scaling_factor=lj_depth_scaling_factor,
                                      where_to_place_molecule=where_to_place_molecule_for_char_grids)
@@ -117,4 +117,11 @@ class FFTSampling(object):
         print("Done with fft sampling, closing the nc file.")
         self._nc_handle.close()
         return None
+
+    def get_pot_grid(self):
+        return self._pot_grid
+
+    def get_char_grid(self):
+        return self._char_grid
+    
 
