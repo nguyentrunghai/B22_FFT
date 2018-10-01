@@ -645,7 +645,7 @@ class PotentialGrid(Grid):
 
         TODO: add debye huckel to electrostatics
         """
-        assert (coordinate.dim == 1) and (coordinate.shape[0] == 3), "coordinate must be 1d array of len 3"
+        assert (coordinate.ndim == 1) and (coordinate.shape[0] == 3), "coordinate must be 1d array of len 3"
         if not self._is_in_grid(coordinate):
             raise RuntimeError("atom is outside grid")
 
@@ -897,7 +897,7 @@ class ChargeGrid(Grid):
     def get_charges(self):
         charges = dict()
         for name in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
-            charges[name] = self._get_charges(name)
+            charges[name] = self._prmtop[name]
         return charges
 
 
