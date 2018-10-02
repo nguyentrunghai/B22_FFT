@@ -5,6 +5,7 @@ Compare interaction energies obtained by FFT and by direct calculation
 from __future__ import print_function
 
 import argparse
+import pickle
 
 import numpy as np
 import netCDF4 as nc
@@ -33,7 +34,9 @@ parser.add_argument( "--where_to_place_molecule_for_char_grids",   type=str, def
 
 parser.add_argument( "--fft_sample_nc",   type=str, default="fft_samples.nc")
 
-parser.add_argument( "--n_energy_samples",   type=int, default=100)
+parser.add_argument( "--n_energy_samples",   type=int, default=1000)
+
+parser.add_argument( "--out",   type=str, default="energies.pkl")
 
 args = parser.parse_args()
 
@@ -82,9 +85,20 @@ sel_indices = np.random.choice(n_data_points, size=args.n_energy_samples, replac
 fft_energies = fft_data.variables['electrostatic_0'][sel_indices] + fft_data.variables['LJ_RA_0'][sel_indices]
 trans_corners = fft_data.variables['char_trans_corners_0'][sel_indices]
 
-direct_energies = np.zeros([args.n_energy_samples])
-for i, corner in enumerate(trans_corners):
+
+# take the smallest and the largest
+sorted_indices = np.argsort(fft_energies)
+first_ten = sorted_indices[:10]
+last_ten = sorted_indices[-10:]
+
+sorted_fft_energies = np.concatenate( [ fft_energies[ first_ten ], fft_energies[ last_ten ] ] )
+sorted_trans_corners = np.concatenate( [ trans_corners[ first_ten ], trans_corners[ last_ten ] ] )
+
+direct_energies = np.zeros([len(sorted_fft_energies)])
+for i, corner in enumerate(sorted_trans_corners):
     move_by = corner * spacing
+    #print("move by {}".format(move_by))
+    print("move distance {}".format( np.sqrt((move_by**2).sum()) ) )
     moved_char_crd = char_crd_0 + move_by
 
     mode = "a"
@@ -96,7 +110,7 @@ for i, corner in enumerate(trans_corners):
 
     direct_energies[i] = pot_grid.direct_energy(moved_char_crd, char_charges)
 
-    print("{} Vs {}".format(fft_energies[i], direct_energies[i]))
+    print("{} Vs {}".format(sorted_fft_energies[i], direct_energies[i]))
 
 
-
+pickle.dump({"fft":sorted_fft_energies, "direct":direct_energies}, open(args.out, "w"))
