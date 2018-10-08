@@ -199,38 +199,6 @@ class Grid(object):
                 return True
         return False
 
-    def _move_molecule_to_lower_corner(self):
-        """
-        move the molecule to near the grid lower corner
-        store self._max_grid_indices
-        TODO change 0.5 to 1.5
-        """
-        print("Move molecule to lower corner.")
-
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
-        print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
-
-        displacement = self._origin_crd - lower_molecule_corner_crd
-        print("Molecule is translated by ", displacement)
-        self._crd += displacement.reshape(1, 3)
-
-        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
-        print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
-        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
-        print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
-
-        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
-        if np.any(molecule_box_lengths < 0):
-            raise RuntimeError("One of the molecule box lengths are negative")
-
-        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
-        # self._max_grid_indices is how far it can step before moving out of the box
-        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
-        if np.any(self._max_grid_indices <= 1):
-            raise RuntimeError("At least one of the max grid indices is <= one")
-
-        return None
-
     def get_grid_func_names(self):
         return self._grid_func_names
     
@@ -242,18 +210,9 @@ class Grid(object):
     
     def get_prmtop(self):
         return self._prmtop
-    
-    #def get_charges(self):
-    #    charges = dict()
-    #    for key in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
-    #        charges[key] = self._prmtop[key]
-    #    return charges
 
     def get_natoms(self):
         return self._prmtop["POINTERS"]["NATOM"]
-
-    def get_initial_com(self):
-        return self._initial_com
 
 
 def debye_huckel_kappa(I_mole_per_litter, dielectric_constant, temperature):
@@ -739,6 +698,37 @@ class ChargeGrid(Grid):
         # and self._initial_com
         self._where_to_place_molecule = where_to_place_molecule
         self._move_molecule_to_center_or_corner()
+
+    def _move_molecule_to_lower_corner(self):
+        """
+        move the molecule to near the grid lower corner
+        store self._max_grid_indices
+        """
+        print("Move molecule to lower corner.")
+
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
+
+        displacement = self._origin_crd - lower_molecule_corner_crd
+        print("Molecule is translated by ", displacement)
+        self._crd += displacement.reshape(1, 3)
+
+        lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
+        print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
+        upper_molecule_corner_crd = self._crd.max(axis=0) + 1.5 * self._spacing
+        print("After moving, upper_molecule_corner_crd at", upper_molecule_corner_crd)
+
+        molecule_box_lengths = upper_molecule_corner_crd - lower_molecule_corner_crd
+        if np.any(molecule_box_lengths < 0):
+            raise RuntimeError("One of the molecule box lengths are negative")
+
+        max_grid_indices = np.ceil(molecule_box_lengths / self._spacing)
+        # self._max_grid_indices is how far it can step before moving out of the box
+        self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
+        if np.any(self._max_grid_indices <= 1):
+            raise RuntimeError("At least one of the max grid indices is <= one")
+
+        return None
 
     def _move_molecule_to_center_or_corner(self):
         if self._where_to_place_molecule == "center":
