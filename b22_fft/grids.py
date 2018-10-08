@@ -119,12 +119,14 @@ class Grid(object):
         """
         return the center of mass of self._crd
         """
+        center_of_mass = np.zeros([3], dtype=float)
         masses = self._prmtop["MASS"]
+        for atom_ind in range(len(self._crd)):
+            center_of_mass += masses[atom_ind] * self._crd[atom_ind]
         total_mass = masses.sum()
         if total_mass == 0:
-            raise RuntimeError("Zero total mass")
+            raise RuntimeError("zero total mass")
 
-        center_of_mass = (masses.reshape(-1, 1) * self._crd).sum(axis=0)
         return center_of_mass / total_mass
 
     def _get_corner_crd(self, corner):
@@ -134,7 +136,7 @@ class Grid(object):
         :return: 1d array of float with shape (3,)
         """
         i, j, k = corner
-        return np.array([self._grid["x"][i], self._grid["y"][j], self._grid["z"][k]] , dtype=float)
+        return np.array([self._grid["x"][i], self._grid["y"][j], self._grid["z"][k]], dtype=float)
     
     def _get_upper_most_corner(self):
         return np.array(self._grid["counts"] - 1, dtype=int)
