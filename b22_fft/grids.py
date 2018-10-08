@@ -411,10 +411,11 @@ class PotentialGrid(Grid):
                 self._set_grid_key_value(key, nc_handle.variables[key][:])
 
         self._initialize_convenient_para()
+
         self._crd = self._grid["crd_placed_in_grid"]
         self._initial_com = self._grid["initial_com"]
-        self._max_grid_indices = self._grid["max_grid_indices"]
-        self._debye_huckel_kappa = self._grid["debye_huckel_kappa"]
+        self._debye_huckel_kappa = self._grid["debye_huckel_kappa"][0]
+        self._dielectric = self._grid["dielectric"][0]
 
         natoms = self._prmtop["POINTERS"]["NATOM"]
         if natoms != self._crd.shape[0]:
@@ -577,7 +578,7 @@ class PotentialGrid(Grid):
             lj_diameter = self._prmtop["LJ_SIGMA"][atom_ix]
 
             if R > lj_diameter:
-                values["electrostatic"] += np.exp(-self._debye_huckel_kappa * R) * charges["electrostatic"][atom_ix] / R
+                values["electrostatic"] += charges["electrostatic"][atom_ix] / R
                 values["LJr"] += charges["LJr"][atom_ix] / R**12
                 values["LJa"] += charges["LJa"][atom_ix] / R**6
         
