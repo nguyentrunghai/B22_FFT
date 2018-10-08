@@ -10,6 +10,10 @@ from amber_par import AmberPrmtopLoader, InpcrdLoader
 from _pdb import write_pdb, write_box
 from netcdf4 import write_to_nc
 
+from util import c_is_in_grid
+from util import cdistance
+from util import c_containing_cube
+
 from util import c_cal_charge_grid
 from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
 from util import c_cal_potential_grid_occupancy
@@ -161,9 +165,10 @@ class Grid(object):
         :param atom_coordinate: 3-array of float
         :return: bool
         """
-        if np.any(atom_coordinate < self._origin_crd) or np.any(atom_coordinate >= self._upper_most_corner_crd):
-            return False
-        return True
+        #if np.any(atom_coordinate < self._origin_crd) or np.any(atom_coordinate >= self._upper_most_corner_crd):
+        #    return False
+        #return True
+        return c_is_in_grid(atom_coordinate, self._origin_crd, self._upper_most_corner_crd)
     
     def _distance(self, corner, atom_coordinate):
         """
@@ -173,23 +178,33 @@ class Grid(object):
         :return: float
         """
         corner_crd = self._get_corner_crd(corner)
-        d = (corner_crd - atom_coordinate)**2
-        return np.sqrt(d.sum())
+        #d = (corner_crd - atom_coordinate)**2
+        #return np.sqrt(d.sum())
+        return cdistance(atom_coordinate, corner_crd)
 
     def _containing_cube(self, atom_coordinate):
-        if not self._is_in_grid(atom_coordinate):
-            return [], 0, 0
+        eight_corners, nearest_ix, furthest_ix = c_containing_cube(atom_coordinate,
+                                                                   self._origin_crd,
+                                                                   self._upper_most_corner_crd,
+                                                                   self._spacing,
+                                                                   self._eight_corner_shifts,
+                                                                   self._grid["x"],
+                                                                   self._grid["y"],
+                                                                   self._grid["z"])
+        #if not self._is_in_grid(atom_coordinate):
+        #    return [], 0, 0
 
-        tmp = atom_coordinate - self._origin_crd
-        lower_corner = np.array(tmp / spacing, dtype=int)
-        eight_corners = [lower_corner + shift for shift in self._eight_corner_shifts]
+        #tmp = atom_coordinate - self._origin_crd
+        #lower_corner = np.array(tmp / spacing, dtype=int)
+        #eight_corners = [lower_corner + shift for shift in self._eight_corner_shifts]
 
-        distances = []
-        for corner in eight_corners:
-            distances.append(self._distance(corner, atom_coordinate) )
+        #distances = []
+        #for corner in eight_corners:
+        #    distances.append(self._distance(corner, atom_coordinate) )
 
-        nearest_ix = np.argmin(distances)
-        furthest_ix = np.argmax(distances)
+        #nearest_ix = np.argmin(distances)
+        #furthest_ix = np.argmax(distances)
+
         return eight_corners, nearest_ix, furthest_ix
     
     def _is_row_in_matrix(self, row, matrix):
