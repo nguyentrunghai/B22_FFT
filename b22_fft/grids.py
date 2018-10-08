@@ -13,6 +13,7 @@ from netcdf4 import write_to_nc
 from util import c_is_in_grid
 from util import cdistance
 from util import c_containing_cube
+from util import c_cal_potential_grid
 
 from util import c_cal_charge_grid
 from util import c_cal_potential_grid_electrostatic, c_cal_potential_grid_LJa, c_cal_potential_grid_LJr
@@ -67,28 +68,13 @@ class Grid(object):
         self._grid[key] = value
         return None
     
-    def _load_prmtop(self, prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor):
+    def _load_prmtop(self, prmtop_file_name):
         """
         :param prmtop_file_name: str, name of AMBER prmtop file
-        :param lj_sigma_scaling_factor: float, must have value in [0.5, 1.0].
-        It is stored in self._grid["lj_sigma_scaling_factor"] as
-        a array of shape (1,) for reason of saving to nc file.
         :return: None
         """
         print("Loading " + prmtop_file_name)
-        assert 0.5 <= lj_sigma_scaling_factor <= 1.0, "lj_sigma_scaling_factor is out of allowed range"
         self._prmtop = AmberPrmtopLoader(prmtop_file_name).get_parm_for_grid_calculation()
-
-        # scale the Lennard Jones sigma parameters
-        self._prmtop["LJ_SIGMA"] *= lj_sigma_scaling_factor
-
-        # scale Lennard Jones depth
-        self._prmtop["A_LJ_CHARGE"] *= np.sqrt(lj_depth_scaling_factor)
-        self._prmtop["R_LJ_CHARGE"] *= np.sqrt(lj_depth_scaling_factor)
-
-        # save "lj_sigma_scaling_factor" and "lj_depth_scaling_factor" to self._grid
-        self._set_grid_key_value("lj_sigma_scaling_factor", np.array([lj_sigma_scaling_factor], dtype=float))
-        self._set_grid_key_value("lj_depth_scaling_factor", np.array([lj_depth_scaling_factor], dtype=float))
         return None
     
     def _load_inpcrd(self, inpcrd_file_name):
@@ -256,21 +242,16 @@ class PotentialGrid(Grid):
                  inpcrd_file_name,
                  grid_nc_file,
                  new_calculation=False,
-                 lj_sigma_scaling_factor=1.,
-                 lj_depth_scaling_factor=1.,
                  ionic_strength=0.,
                  dielectric=1.,
                  temperature=300.,
                  spacing=0.25,
-                 counts=(1, 1, 1),
-                 where_to_place_molecule="center"):
+                 counts=(1, 1, 1)):
         """
         :param prmtop_file_name: str,  AMBER prmtop file
         :param inpcrd_file_name: str, AMBER coordinate file
         :param grid_nc_file: str, netCDF4 file
         :param new_calculation: if True do the new grid calculation else load data in grid_nc_file
-        :param lj_sigma_scaling_factor: float
-        :param lj_depth_scaling_factor: float, used to rescale epsilon (LJ depth) to account for different surface tension
         :param ionic_strength: float, in mole per litter
         :param dielectric: float, > 0
         :param temperature: float
@@ -278,19 +259,16 @@ class PotentialGrid(Grid):
         :param counts: tuple of 3 floats, number of grid points a long x, y and z
         :param extra_buffer: float in angstrom,
                             extra buffer space arround the molecule, not used if counts is specified
-        :param where_to_place_molecule: str, one of the two ["center", "lower_corner"]
         """
-        assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
-
         Grid.__init__(self)
         self._FFTs = {}
 
         # save parameter to self._prmtop
         # save "lj_sigma_scaling_factor" and "lj_depth_scaling_factor" to self._grid
-        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
+        self._load_prmtop(prmtop_file_name)
 
-        # Charges in potential grid will carry the dielectric
-        self._prmtop["CHARGE_E_UNIT"] /= dielectric
+        self._dielectric = dielectric
+        # put dielectric constant in grid to be saved to nc file
         self._set_grid_key_value("dielectric", np.array([dielectric], dtype=float))
 
         if new_calculation:
@@ -311,13 +289,8 @@ class PotentialGrid(Grid):
             # self._upper_most_corner, self._spacing
             self._initialize_convenient_para()
 
-            # TODO
             # move molecule
-            # also stores self._max_grid_indices (not use for potential grid)
-            if where_to_place_molecule == "center":
-                self._move_molecule_to_grid_center()
-            elif where_to_place_molecule == "lower_corner":
-                self._move_molecule_to_lower_corner()
+            self._move_molecule_to_grid_center()
 
             # store initial center of mass
             self._initial_com = self._get_molecule_center_of_mass()
@@ -332,6 +305,7 @@ class PotentialGrid(Grid):
             self._set_grid_key_value("temperature", np.array([temperature], dtype=float))
             self._set_grid_key_value("debye_huckel_kappa", np.array([self._debye_huckel_kappa], dtype=float))
 
+            # TODO
             self._cal_potential_grids()
 
             # save every thing to nc file
@@ -343,6 +317,55 @@ class PotentialGrid(Grid):
 
         else:
             self._load_precomputed_grids(grid_nc_file)
+
+    def _cal_grid_parameters(self, spacing, counts):
+        """
+        :param spacing: float, unit in angstrom, the same in x, y, z directions
+        :param bsite_file: str, the file name of "measured_binding_site.py" from AlGDock pipeline
+        :param nc_handle: an instance of netCDF4.Dataset()
+        :return: None
+        """
+        assert len(counts) == 3, "counts must have three numbers"
+        for count in counts:
+            assert count > 0, "count must be positive integer"
+
+        assert spacing > 0, "spacing must be positive"
+
+        self._set_grid_key_value("origin", np.zeros([3], dtype=float))
+
+        self._set_grid_key_value("d0", np.array([spacing, 0, 0], dtype=float))
+        self._set_grid_key_value("d1", np.array([0, spacing, 0], dtype=float))
+        self._set_grid_key_value("d2", np.array([0, 0, spacing], dtype=float))
+        self._set_grid_key_value("spacing", np.array([spacing] * 3, dtype=float))
+        self._set_grid_key_value("counts", np.array(counts, dtype=int))
+
+        return None
+
+    def _cal_grid_coordinates(self):
+        """
+        calculate grid coordinates (x,y,z) for each corner,
+        save 'x', 'y', 'z' to self._grid
+        """
+        print("Calculating grid coordinates")
+        #
+        x = np.zeros(self._grid["counts"][0], dtype=float)
+        y = np.zeros(self._grid["counts"][1], dtype=float)
+        z = np.zeros(self._grid["counts"][2], dtype=float)
+
+        for i in range(self._grid["counts"][0]):
+            x[i] = self._grid["origin"][0] + i * self._grid["d0"][0]
+
+        for j in range(self._grid["counts"][1]):
+            y[j] = self._grid["origin"][1] + j * self._grid["d1"][1]
+
+        for k in range(self._grid["counts"][2]):
+            z[k] = self._grid["origin"][2] + k * self._grid["d2"][2]
+
+        self._set_grid_key_value("x", x)
+        self._set_grid_key_value("y", y)
+        self._set_grid_key_value("z", z)
+
+        return None
 
     def _move_molecule_to_grid_center(self):
         """
@@ -449,88 +472,6 @@ class PotentialGrid(Grid):
         write_to_nc(nc_handle, key, value)
         return None
 
-    def _cal_grid_parameters(self, spacing, counts):
-        """
-        :param spacing: float, unit in angstrom, the same in x, y, z directions
-        :param bsite_file: str, the file name of "measured_binding_site.py" from AlGDock pipeline
-        :param nc_handle: an instance of netCDF4.Dataset()
-        :return: None
-        """
-        assert len(counts) == 3, "counts must have three numbers"
-        for count in counts:
-            assert count > 0, "count must be positive integer"
-
-        assert spacing > 0, "spacing must be positive"
-
-        self._set_grid_key_value("origin", np.zeros([3], dtype=float))
-        
-        self._set_grid_key_value("d0", np.array([spacing, 0, 0], dtype=float))
-        self._set_grid_key_value("d1", np.array([0, spacing, 0], dtype=float))
-        self._set_grid_key_value("d2", np.array([0, 0, spacing], dtype=float))
-        self._set_grid_key_value("spacing", np.array([spacing]*3, dtype=float))
-        self._set_grid_key_value("counts", np.array(counts, dtype=int))
-
-        return None
-    
-    def _cal_grid_parameters_without_bsite(self, spacing, extra_buffer, nc_handle):
-        """
-        use this when making box encompassing the whole receptor
-        spacing:    float, unit in angstrom, the same in x, y, z directions
-        extra_buffer: float
-        """
-        assert spacing > 0 and extra_buffer > 0, "spacing and extra_buffer must be positive"
-        self._set_grid_key_value("origin", np.zeros( [3], dtype=float))
-        
-        self._set_grid_key_value("d0", np.array([spacing, 0, 0], dtype=float))
-        self._set_grid_key_value("d1", np.array([0, spacing, 0], dtype=float))
-        self._set_grid_key_value("d2", np.array([0, 0, spacing], dtype=float))
-        self._set_grid_key_value("spacing", np.array([spacing]*3, dtype=float))
-        
-        lj_radius = np.array(self._prmtop["LJ_SIGMA"]/2., dtype=float)
-        dx = (self._crd[:,0] + lj_radius).max() - (self._crd[:,0] - lj_radius).min()
-        dy = (self._crd[:,1] + lj_radius).max() - (self._crd[:,1] - lj_radius).min()
-        dz = (self._crd[:,2] + lj_radius).max() - (self._crd[:,2] - lj_radius).min()
-
-        print("Receptor enclosing box [%f, %f, %f]"%(dx, dy, dz))
-        print("extra_buffer: %f"%extra_buffer)
-
-        length = max([dx, dy, dz]) + 2.0*extra_buffer
-        count = np.ceil(length / spacing) + 1
-        
-        self._set_grid_key_value("counts", np.array([count]*3, dtype=int))
-        print("counts ", self._grid["counts"])
-        print("Total box size %f" %((count-1)*spacing))
-
-        for key in ["origin", "d0", "d1", "d2", "spacing", "counts"]:
-            self._write_to_nc(nc_handle, key, self._grid[key])
-        return None
-    
-    def _cal_grid_coordinates(self):
-        """
-        calculate grid coordinates (x,y,z) for each corner,
-        save 'x', 'y', 'z' to self._grid
-        """
-        print("Calculating grid coordinates")
-        #
-        x = np.zeros(self._grid["counts"][0], dtype=float)
-        y = np.zeros(self._grid["counts"][1], dtype=float)
-        z = np.zeros(self._grid["counts"][2], dtype=float)
-        
-        for i in range(self._grid["counts"][0]):
-            x[i] = self._grid["origin"][0] + i*self._grid["d0"][0]
-
-        for j in range(self._grid["counts"][1]):
-            y[j] = self._grid["origin"][1] + j*self._grid["d1"][1]
-
-        for k in range(self._grid["counts"][2]):
-            z[k] = self._grid["origin"][2] + k*self._grid["d2"][2]
-
-        self._set_grid_key_value("x", x)
-        self._set_grid_key_value("y", y)
-        self._set_grid_key_value("z", z)
-
-        return None
-
     def _get_charges(self, name):
         assert name in self._grid_func_names, "%s is not allowed"%name
 
@@ -547,7 +488,29 @@ class PotentialGrid(Grid):
 
     def _cal_potential_grids(self):
         """
+        use cython to calculate each to the grids, save them to nc file
+        """
+        for name in self._grid_func_names:
+            print("calculating %s grid"%name)
+            charges = self._get_charges(name)
+            grid = c_cal_potential_grid(name,
+                                        self._crd,
+                                        self._grid["x"], self._grid["y"], self._grid["z"],
+                                        self._origin_crd,
+                                        self._upper_most_corner_crd,
+                                        self._upper_most_corner,
+                                        self._grid["spacing"],
+                                        self._grid["counts"],
+                                        charges,
+                                        self._prmtop["LJ_SIGMA"])
+
+            self._set_grid_key_value(name, grid)
+        return None
+
+    def _cal_potential_grids_NOUSED(self):
+        """
         :return: None
+        TODO
         """
         for name in self._grid_func_names:
             print("Calculating %s grid"%name)
