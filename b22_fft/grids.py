@@ -501,7 +501,9 @@ class PotentialGrid(Grid):
                                         self._grid["spacing"],
                                         self._grid["counts"],
                                         charges,
-                                        self._prmtop["LJ_SIGMA"])
+                                        self._prmtop["LJ_SIGMA"],
+                                        self._debye_huckel_kappa,
+                                        self._dielectric)
 
             self._set_grid_key_value(name, grid)
         return None
@@ -522,7 +524,9 @@ class PotentialGrid(Grid):
                                                     self._origin_crd,
                                                     self._upper_most_corner_crd, self._upper_most_corner,
                                                     self._grid["spacing"], self._grid["counts"], charges,
-                                                    self._prmtop["LJ_SIGMA"], self._debye_huckel_kappa)
+                                                    self._prmtop["LJ_SIGMA"],
+                                                    self._debye_huckel_kappa,
+                                                    self._dielectric)
 
             elif name == "LJa":
                 grid = c_cal_potential_grid_LJa(self._crd,
