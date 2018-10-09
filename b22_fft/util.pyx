@@ -294,7 +294,9 @@ def c_cal_potential_grid(   str name,
                             np.ndarray[np.float64_t, ndim=1] spacing,
                             np.ndarray[np.int64_t, ndim=1]   gird_counts,
                             np.ndarray[np.float64_t, ndim=1] charges,
-                            np.ndarray[np.float64_t, ndim=1] lj_sigma):
+                            np.ndarray[np.float64_t, ndim=1] lj_sigma,
+                            double debye_huckel_kappa,
+                            double dielectric):
 
     cdef:
         list corners
@@ -341,7 +343,11 @@ def c_cal_potential_grid(   str name,
 
                         d = dx_tmp + dy_tmp + dz2[k]
                         d = d**exponent
-                        grid_tmp[i,j,k] = charge / d
+
+                        if name == "electrostatic":
+                            grid_tmp[i,j,k] = charge * np.exp(-debye_huckel_kappa * d) / dielectric / d
+                        else:
+                            grid_tmp[i,j,k] = charge / d
 
             corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, uper_most_corner_crd,
                                                 uper_most_corner, spacing, grid_x, grid_y, grid_z, gird_counts)
@@ -373,7 +379,8 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
                                         np.ndarray[np.int64_t, ndim=1]   gird_counts,
                                         np.ndarray[np.float64_t, ndim=1] charges,
                                         np.ndarray[np.float64_t, ndim=1] lj_sigma,
-                                        double debye_huckel_kappa):
+                                        double debye_huckel_kappa,
+                                        double dielectric):
 
     cdef:
         list corners
@@ -415,7 +422,7 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
                 for k in range(k_max):
                     d = np.sqrt(dx_tmp + dy_tmp + dz2[k])
 
-                    grid_tmp[i,j,k] = charge * np.exp(-debye_huckel_kappa * d) / d
+                    grid_tmp[i,j,k] = charge * np.exp(-debye_huckel_kappa * d) / dielectric / d
 
         corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, upper_most_corner_crd,
                                             upper_most_corner, spacing, grid_x, grid_y, grid_z, gird_counts)
