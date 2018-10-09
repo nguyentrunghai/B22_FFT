@@ -296,9 +296,6 @@ class PotentialGrid(Grid):
             self._initial_com = self._get_molecule_center_of_mass()
             self._set_grid_key_value("initial_com", self._initial_com)
 
-            # store max_grid_indices  self._max_grid_indices
-            self._set_grid_key_value("max_grid_indices", self._max_grid_indices)
-
             # Debye Huckel kappa
             self._debye_huckel_kappa = self._cal_debye_huckel_kappa(ionic_strength, dielectric, temperature)
             self._set_grid_key_value("ionic_strength", np.array([ionic_strength], dtype=float))
@@ -487,10 +484,11 @@ class PotentialGrid(Grid):
         else:
             raise RuntimeError("%s is unknown"%name)
 
-    def _cal_potential_grids(self):
+    def _cal_potential_grids_NOTUSED(self):
         """
         use cython to calculate each to the grids, save them to nc file
         """
+        print("USE OLD CAL_POTENTIAL_GRID FUNCTION")
         for name in self._grid_func_names:
             print("calculating %s grid"%name)
             charges = self._get_charges(name)
@@ -508,11 +506,12 @@ class PotentialGrid(Grid):
             self._set_grid_key_value(name, grid)
         return None
 
-    def _cal_potential_grids_NOUSED(self):
+    def _cal_potential_grids(self):
         """
         :return: None
         TODO
         """
+        print("USE NEW CAL_POTENTIAL_GRID FUNCTION")
         for name in self._grid_func_names:
             print("Calculating %s grid"%name)
             charges = self._get_charges(name)
