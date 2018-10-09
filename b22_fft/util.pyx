@@ -387,10 +387,10 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
 
         double charge, lj_diameter
         double d
-        double dx_tmp, dxy_tmp
+        double dx_tmp, dy_tmp
         
         np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
-        np.ndarray[np.float64_t, ndim=3] grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+        np.ndarray[np.float64_t, ndim=3] grid_tmp
 
         np.ndarray[np.float64_t, ndim=1] atom_coordinate
         np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
@@ -404,14 +404,17 @@ def c_cal_potential_grid_electrostatic( np.ndarray[np.float64_t, ndim=2] crd,
         dy2 = (atom_coordinate[1] - grid_y)**2
         dz2 = (atom_coordinate[2] - grid_z)**2
 
+        grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+
         for i in range(i_max):
             dx_tmp = dx2[i]
 
             for j in range(j_max):
-                dxy_tmp = dx_tmp + dy2[j]
+                dy_tmp = dy2[j]
                 
                 for k in range(k_max):
-                    d = np.sqrt(dxy_tmp + dz2[k])
+                    d = np.sqrt(dx_tmp + dy_tmp + dz2[k])
+
                     grid_tmp[i,j,k] = charge * np.exp(-debye_huckel_kappa * d) / d
 
         corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, upper_most_corner_crd,
@@ -450,10 +453,10 @@ def c_cal_potential_grid_LJa(np.ndarray[np.float64_t, ndim=2] crd,
         
         double charge, lj_diameter
         double d
-        double dx_tmp, dxy_tmp
+        double dx_tmp, dy_tmp
         
         np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
-        np.ndarray[np.float64_t, ndim=3] grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+        np.ndarray[np.float64_t, ndim=3] grid_tmp
         np.ndarray[np.float64_t, ndim=1] atom_coordinate
         np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
 
@@ -467,14 +470,16 @@ def c_cal_potential_grid_LJa(np.ndarray[np.float64_t, ndim=2] crd,
         dy2 = (atom_coordinate[1] - grid_y)**2
         dz2 = (atom_coordinate[2] - grid_z)**2
 
+        grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+
         for i in range(i_max):
             dx_tmp = dx2[i]
 
             for j in range(j_max):
-                dxy_tmp = dx_tmp + dy2[j]
+                dy_tmp = dy2[j]
 
                 for k in range(k_max):
-                    d = (dxy_tmp + dz2[k]) ** 3
+                    d = (dx_tmp + dy_tmp + dz2[k]) ** 3
                     grid_tmp[i,j,k] = charge / d
 
         corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, upper_most_corner_crd,
@@ -512,10 +517,10 @@ def c_cal_potential_grid_LJr(np.ndarray[np.float64_t, ndim=2] crd,
 
         double charge, lj_diameter
         double d
-        double dx_tmp, dxy_tmp
+        double dx_tmp, dy_tmp
 
         np.ndarray[np.float64_t, ndim=3] grid = np.zeros([i_max, j_max, k_max], dtype=np.float)
-        np.ndarray[np.float64_t, ndim=3] grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+        np.ndarray[np.float64_t, ndim=3] grid_tmp
         np.ndarray[np.float64_t, ndim=1] atom_coordinate
         np.ndarray[np.float64_t, ndim=1] dx2, dy2, dz2
 
@@ -528,14 +533,16 @@ def c_cal_potential_grid_LJr(np.ndarray[np.float64_t, ndim=2] crd,
         dy2 = (atom_coordinate[1] - grid_y)**2
         dz2 = (atom_coordinate[2] - grid_z)**2
 
+        grid_tmp = np.zeros([i_max, j_max, k_max], dtype=np.float)
+
         for i in range(i_max):
             dx_tmp = dx2[i]
 
             for j in range(j_max):
-                dxy_tmp = dx_tmp + dy2[j]
+                dy_tmp = dy2[j]
 
                 for k in range(k_max):
-                    d = (dxy_tmp + dz2[k]) ** 6
+                    d = (dx_tmp + dy_tmp + dz2[k]) ** 6
                     grid_tmp[i,j,k] = charge / d
 
         corners = c_corners_within_radius(atom_coordinate, lj_diameter, origin_crd, upper_most_corner_crd,
