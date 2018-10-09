@@ -559,8 +559,6 @@ class PotentialGrid(Grid):
         """
         :param coordinate: ndarray of floats, shape = (3,)
         :return: dict
-
-        TODO: add debye huckel to electrostatics
         """
         assert (coordinate.ndim == 1) and (coordinate.shape[0] == 3), "coordinate must be 1d array of len 3"
         if not self._is_in_grid(coordinate):
@@ -581,7 +579,7 @@ class PotentialGrid(Grid):
             lj_diameter = self._prmtop["LJ_SIGMA"][atom_ix]
 
             if R > lj_diameter:
-                values["electrostatic"] += charges["electrostatic"][atom_ix] / R
+                values["electrostatic"] += charges["electrostatic"][atom_ix] * np.exp(-self._debye_huckel_kappa * R) / self._dielectric / R
                 values["LJr"] += charges["LJr"][atom_ix] / R**12
                 values["LJa"] += charges["LJa"][atom_ix] / R**6
         
@@ -594,13 +592,17 @@ class PotentialGrid(Grid):
         :return: float
         """
         assert len(other_molecule_crd) == len(other_molecule_charges["CHARGE_E_UNIT"]), "coord and charges must have the same len"
-        energy = 0.
+
+        energies = {"electrostatic":0., "LJr":0., "LJa":0.}
+
         for atom_ix in range(len(other_molecule_crd)):
             potentials = self._exact_values(other_molecule_crd[atom_ix])
-            energy += potentials["electrostatic"] * other_molecule_charges["CHARGE_E_UNIT"][atom_ix]
-            energy += potentials["LJr"] * other_molecule_charges["R_LJ_CHARGE"][atom_ix]
-            energy += potentials["LJa"] * other_molecule_charges["A_LJ_CHARGE"][atom_ix]
-        return energy
+
+            energies["electrostatic"] += potentials["electrostatic"] * other_molecule_charges["CHARGE_E_UNIT"][atom_ix]
+            energies["LJr"] += potentials["LJr"] * other_molecule_charges["R_LJ_CHARGE"][atom_ix]
+            energies["LJa"] += potentials["LJa"] * other_molecule_charges["A_LJ_CHARGE"][atom_ix]
+
+        return energies
 
     def get_FFTs(self):
         return self._FFTs
