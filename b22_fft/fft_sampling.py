@@ -16,31 +16,21 @@ class FFTSampling(object):
     """
     def __init__(self,
                  pot_prmtop, pot_inpcrd, pot_grid_nc,
-                 char_prmtop, char_inpcrd, conf_ensenmble_for_char_grids,
-                 output_nc,
-                 lj_sigma_scaling_factor=1.,
-                 lj_depth_scaling_factor=1.,
-                 where_to_place_molecule_for_char_grids="lower_corner"):
+                 char_prmtop, conf_ensenmble_for_char_grids,
+                 output_nc):
         """
         :param pot_prmtop: str, amber prmtop file for potential grid
         :param pot_inpcrd: str, amber inpcrd file for potential grid
         :param pot_grid_nc: str, netCDF4 file storing precomputed potential grid
         :param char_prmtop: str, amber prmtop file for charge grid
-        :param char_inpcrd: str, amber inpcrd for char grid
         :param conf_ensenmble_for_char_grids: 3d arrays of float, shape = (nconfs, natoms, 3)
-        :param lj_sigma_scaling_factor: float
-        :param lj_depth_scaling_factor: float
-        :param where_to_place_molecule_for_char_grids: str
         """
 
         self._pot_grid = PotentialGrid(pot_prmtop, pot_inpcrd, pot_grid_nc, new_calculation=False)
         self._pot_crd = self._pot_grid.get_crd()
         self._pot_initial_com = self._pot_grid.get_initial_com()
 
-        self._char_grid = ChargeGrid(char_prmtop, char_inpcrd, self._pot_grid,
-                                     lj_sigma_scaling_factor=lj_sigma_scaling_factor,
-                                     lj_depth_scaling_factor=lj_depth_scaling_factor,
-                                     where_to_place_molecule=where_to_place_molecule_for_char_grids)
+        self._char_grid = ChargeGrid(char_prmtop, self._pot_grid)
 
         self._conf_ensenmble_for_char_grids = self._load_ligand_coor_ensemble(conf_ensenmble_for_char_grids)
 
@@ -98,12 +88,9 @@ class FFTSampling(object):
             key_suffix = "_%d"%step
 
             energies = self._char_grid.get_meaningful_energies()
-            #for key in energies:
-            #    self._write_to_nc(key + key_suffix, energies[key])
+            for key in energies:
+                self._write_to_nc(key + key_suffix, energies[key])
 
-            self._write_to_nc("electrostatic" + key_suffix, energies["electrostatic"])
-            # combine both repulsive and attractive LJ terms
-            self._write_to_nc("LJ_RA" + key_suffix, energies["LJr"] + energies["LJa"])
 
             crd = self._char_grid.get_crd()
             self._write_to_nc("char_crd" + key_suffix, crd)
