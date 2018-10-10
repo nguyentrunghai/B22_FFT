@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import argparse
 import pickle
+import copy
 
 import numpy as np
 import netCDF4 as nc
@@ -22,15 +23,9 @@ parser.add_argument( "--pot_inpcrd_file",   type=str, default="/home/nguyen76/B2
 parser.add_argument( "--pot_grid_nc_file",  type=str, default="/scratch/nguyen76/B22/pot_grids/0.1M/grid.nc")
 
 parser.add_argument( "--char_prmtop_file",   type=str, default="/home/nguyen76/B22/Leap/protein_ph9p4.prmtop")
-parser.add_argument( "--char_inpcrd_file",   type=str, default="/home/nguyen76/B22/md/protein_2/traj_0.inpcrd")
 
 parser.add_argument( "--char_conf_ensemble_file",   type=str, default="/home/nguyen76/B22/md/protein_2/traj.nc")
 parser.add_argument( "--conf_ind",   type=int, default=0)
-
-parser.add_argument( "--lj_sigma_scaling_factor",   type=float, default=1.0)
-parser.add_argument( "--lj_depth_scaling_factor",   type=float, default=1.0)
-
-parser.add_argument( "--where_to_place_molecule_for_char_grids",   type=str, default="lower_corner")
 
 parser.add_argument( "--fft_sample_nc",   type=str, default="fft_samples.nc")
 
@@ -40,14 +35,30 @@ parser.add_argument( "--out",   type=str, default="energies.pkl")
 
 args = parser.parse_args()
 
+
+def _translate_crd(crd, trans_corner, grid_x, grid_y, grid_z):
+    trans_crd = copy.deepcopy(crd)
+    i, j, k = trans_corner
+    x = grid_x[i]
+    y = grid_y[j]
+    z = grid_z[k]
+
+    displacement = np.array([x, y, z], dtype=float)
+
+    for atom_ix in range(len(trans_crd)):
+        trans_crd[atom_ix] += displacement
+    return trans_crd
+
+
 char_conf = nc.Dataset(args.char_conf_ensemble_file, "r").variables["positions"][args.conf_ind : args.conf_ind+1]
 
-sampler = FFTSampling(args.pot_prmtop_file, args.pot_inpcrd_file, args.pot_grid_nc_file,
-                      args.char_prmtop_file, args.char_inpcrd_file, char_conf,
+sampler = FFTSampling(args.pot_prmtop_file,
+                      args.pot_inpcrd_file,
+                      args.pot_grid_nc_file,
+                      args.char_prmtop_file,
+                      char_conf,
                       args.fft_sample_nc,
-                      lj_sigma_scaling_factor=args.lj_sigma_scaling_factor,
-                      lj_depth_scaling_factor=args.lj_depth_scaling_factor,
-                      where_to_place_molecule_for_char_grids=args.where_to_place_molecule_for_char_grids)
+                      )
 
 sampler.run_sampling()
 
@@ -56,7 +67,9 @@ print("COM of the the molecule used to map potential grid: {}".format(pot_grid.g
 pot_grid.write_box("box.pdb")
 pot_grid.write_pdb("pot_molecule_initial_coord.pdb", "w")
 
-spacing = pot_grid.get_grids()['spacing']
+grid_x = pot_grid.get_grids()["x"]
+grid_y = pot_grid.get_grids()["y"]
+grid_z = pot_grid.get_grids()["z"]
 
 char_grid = sampler.get_char_grid()
 print("COM of the the molecule used to map charge grid: {}".format(char_grid.get_initial_com()))
@@ -76,41 +89,38 @@ char_crd_0 = fft_data.variables["char_crd_0"][:]
 write_pdb(char_grid.get_prmtop(), char_crd_0, "char_molecule_initial_coord.pdb", "w")
 
 n_data_points = fft_data.variables['electrostatic_0'].shape[0]
-assert n_data_points == fft_data.variables['LJ_RA_0'].shape[0], "energy arrays do not have the same len"
-assert n_data_points == fft_data.variables['char_trans_corners_0'].shape[0], "energy and trans corner arrays do not have the same len"
 
 np.random.seed(42)
 sel_indices = np.random.choice(n_data_points, size=args.n_energy_samples, replace=False)
 
-fft_energies = fft_data.variables['electrostatic_0'][sel_indices] + fft_data.variables['LJ_RA_0'][sel_indices]
-trans_corners = fft_data.variables['char_trans_corners_0'][sel_indices]
 
+fft_energies = { "electrostatic":[], "LJa":[], "LJr":[] }
+direct_energies = { "electrostatic":[], "LJa":[], "LJr":[] }
 
-# take the smallest and the largest
-sorted_indices = np.argsort(fft_energies)
-first_ten = sorted_indices[:10]
-last_ten = sorted_indices[-10:]
+for ix in sel_indices:
 
-sorted_fft_energies = np.concatenate( [ fft_energies[ first_ten ], fft_energies[ last_ten ] ] )
-sorted_trans_corners = np.concatenate( [ trans_corners[ first_ten ], trans_corners[ last_ten ] ] )
+    fft_energies["electrostatic"].append(fft_data.variables['electrostatic_0'][ix])
+    fft_energies["LJr"].append(fft_data.variables['LJr_0'][ix])
+    fft_energies["LJa"].append(fft_data.variables['LJa_0'][ix])
 
-direct_energies = np.zeros([len(sorted_fft_energies)])
-for i, corner in enumerate(sorted_trans_corners):
-    move_by = corner * spacing
-    #print("move by {}".format(move_by))
-    print("move distance {}".format( np.sqrt((move_by**2).sum()) ) )
-    moved_char_crd = char_crd_0 + move_by
+    corner = fft_data.variables['char_trans_corners_0'][ix]
+    moved_char_crd = _translate_crd(char_crd_0, corner, grid_x, grid_y, grid_z)
 
     mode = "a"
-    if i == 0:
+    if ix == 0:
         mode = "w"
     write_pdb(char_grid.get_prmtop(), moved_char_crd, "char_molecule_move_around.pdb", mode)
 
-    print("Calculating for conf {}".format(i))
+    print("Calculating for conf {}".format(ix))
 
-    direct_energies[i] = pot_grid.direct_energy(moved_char_crd, char_charges)
+    de = pot_grid.direct_energy(moved_char_crd, char_charges)
+    direct_energies["electrostatic"].append(de["electrostatic"])
+    direct_energies["LJr"].append(de["LJr"])
+    direct_energies["LJa"].append(de["LJa"])
 
-    print("{} Vs {}".format(sorted_fft_energies[i], direct_energies[i]))
+    print("electrostatic: {} vs {}".format(fft_energies["electrostatic"][ix], direct_energies["electrostatic"]))
+    print("LJr:           {} vs {}".format(fft_energies["LJr"][ix], direct_energies["LJr"]))
+    print("LJa:           {} vs {}".format(fft_energies["LJa"][ix], direct_energies["LJa"]))
+    print(" ")
 
-
-pickle.dump({"fft":sorted_fft_energies, "direct":direct_energies}, open(args.out, "w"))
+pickle.dump({"fft":fft_energies, "direct":direct_energies}, open(args.out, "w"))
