@@ -277,6 +277,7 @@ class PotentialGrid(Grid):
             self._nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
 
             # coordinates stored in self._crd
+            print("Loading coordinates from " + inpcrd_file_name)
             self._load_inpcrd(inpcrd_file_name)
 
             # save "origin", "d0", "d1", "d2", "spacing" and "counts" to self._grid
@@ -475,12 +476,16 @@ class PotentialGrid(Grid):
 
         if name == "electrostatic":
             return 332.05221729 * np.array(self._prmtop["CHARGE_E_UNIT"], dtype=float)
+
         elif name == "LJa":
             return -2.0 * np.array(self._prmtop["A_LJ_CHARGE"], dtype=float)
+
         elif name == "LJr":
             return np.array(self._prmtop["R_LJ_CHARGE"], dtype=float)
+
         elif name == "occupancy":
             return np.array([0], dtype=float)
+
         else:
             raise RuntimeError("%s is unknown"%name)
 
@@ -511,7 +516,6 @@ class PotentialGrid(Grid):
     def _cal_potential_grids(self):
         """
         :return: None
-        TODO
         """
         print("USE NEW CAL_POTENTIAL_GRID FUNCTION")
         for name in self._grid_func_names:
@@ -621,34 +625,16 @@ class ChargeGrid(Grid):
     Calculate the "charge" part of the interaction energy.
     """
 
-    def __init__(self, prmtop_file_name,
-                 inpcrd_file_name,
-                 potential_grid,
-                 lj_sigma_scaling_factor=1.,
-                 lj_depth_scaling_factor=1.,
-                 where_to_place_molecule="lower_corner"):
+    def __init__(self, prmtop_file_name, potential_grid):
         """
         :param prmtop_file_name: str, name of AMBER prmtop file
-        :param inpcrd_file_name: str, name of AMBER coordinate file
         :param potential_grid: an instance of PotentialGrid.
-        :param lj_sigma_scaling_factor: float
-        :param lj_depth_scaling_factor: float
-        :param where_to_place_molecule: str, one of the two ["center", "lower_corner"]
         """
-        assert where_to_place_molecule in ["center", "lower_corner"], "Unknown where_to_place_molecule"
         Grid.__init__(self)
 
         pot_grid_data = potential_grid.get_grids()
 
-        if pot_grid_data["lj_sigma_scaling_factor"][0] != lj_sigma_scaling_factor:
-            raise RuntimeError("lj_sigma_scaling_factor is %f, but in potential_grid, it is %f" % (
-                lj_sigma_scaling_factor, pot_grid_data["lj_sigma_scaling_factor"][0]))
-
-        if pot_grid_data["lj_depth_scaling_factor"][0] != lj_depth_scaling_factor:
-            raise RuntimeError("lj_depth_scaling_factor is %f, but in potential_grid, it is %f" % (
-                lj_depth_scaling_factor, pot_grid_data["lj_depth_scaling_factor"][0]))
-
-        exclude_entries = self._grid_func_names + ("initial_com", "max_grid_indices", "crd_placed_in_grid")
+        exclude_entries = self._grid_func_names + ("initial_com", "crd_placed_in_grid")
         entries = [key for key in pot_grid_data.keys() if key not in exclude_entries]
 
         print("Copy entries from receptor_grid \n{}".format(entries))
@@ -659,14 +645,8 @@ class ChargeGrid(Grid):
 
         self._pot_grid_FFTs = potential_grid.get_FFTs()
 
-        self._load_prmtop(prmtop_file_name, lj_sigma_scaling_factor, lj_depth_scaling_factor)
-        self._load_inpcrd(inpcrd_file_name)
-
-        # move molecule
-        # also stores self._max_grid_indices (not use for potential grid)
-        # and self._initial_com
-        self._where_to_place_molecule = where_to_place_molecule
-        self._move_molecule_to_center_or_corner()
+        self._load_prmtop(prmtop_file_name)
+        self._crd = None
 
     def _move_molecule_to_lower_corner(self):
         """
@@ -679,8 +659,10 @@ class ChargeGrid(Grid):
         print("Before moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
 
         displacement = self._origin_crd - lower_molecule_corner_crd
+
         print("Molecule is translated by ", displacement)
-        self._crd += displacement.reshape(1, 3)
+        for atom_ix in range(len(self._crd)):
+            self._crd[atom_ix] += displacement
 
         lower_molecule_corner_crd = self._crd.min(axis=0) - 1.5 * self._spacing
         print("After moving, lower_molecule_corner_crd at", lower_molecule_corner_crd)
@@ -696,15 +678,8 @@ class ChargeGrid(Grid):
         self._max_grid_indices = self._grid["counts"] - np.array(max_grid_indices, dtype=int)
         if np.any(self._max_grid_indices <= 1):
             raise RuntimeError("At least one of the max grid indices is <= one")
-
-        return None
-
-    def _move_molecule_to_center_or_corner(self):
-        if self._where_to_place_molecule == "center":
-            self._move_molecule_to_grid_center()
-
-        elif self._where_to_place_molecule == "lower_corner":
-            self._move_molecule_to_lower_corner()
+        print("max_grid_indices is how far the molecule can step before moving out of the box")
+        print(self._max_grid_indices)
 
         self._initial_com = self._get_molecule_center_of_mass()
 
@@ -715,20 +690,30 @@ class ChargeGrid(Grid):
 
         if name == "electrostatic":
             return np.array(self._prmtop["CHARGE_E_UNIT"], dtype=float)
+
         elif name == "LJa":
             return np.array(self._prmtop["A_LJ_CHARGE"], dtype=float)
+
         elif name == "LJr":
             return np.array(self._prmtop["R_LJ_CHARGE"], dtype=float)
+
         elif name == "occupancy":
             return np.array([0], dtype=float)
+
         else:
             raise RuntimeError("%s is unknown" % name)
 
     def _cal_charge_grid(self, name):
         charges = self._get_charges(name)
-        grid = c_cal_charge_grid(name, self._crd, charges, self._origin_crd,
-                                 self._upper_most_corner_crd, self._upper_most_corner,
-                                 self._grid["spacing"], self._eight_corner_shifts, self._six_corner_shifts,
+        grid = c_cal_charge_grid(name,
+                                 self._crd,
+                                 charges,
+                                 self._origin_crd,
+                                 self._upper_most_corner_crd,
+                                 self._upper_most_corner,
+                                 self._grid["spacing"],
+                                 self._eight_corner_shifts,
+                                 self._six_corner_shifts,
                                  self._grid["x"], self._grid["y"], self._grid["z"])
         return grid
 
@@ -739,20 +724,19 @@ class ChargeGrid(Grid):
         """
         assert grid_name in self._grid_func_names, "%s is not an allowed grid name" % grid_name
 
-        #grid = self._cal_charge_grid(grid_name)
+        grid = self._cal_charge_grid(grid_name)
 
-        #self._set_grid_key_value(grid_name, grid)
-        #corr_func = np.fft.fftn(self._grid[grid_name])
-        #self._set_grid_key_value(grid_name, None)  # to save memory
-
-        corr_func = np.fft.fftn( self._cal_charge_grid(grid_name) )
+        self._set_grid_key_value(grid_name, grid)
+        corr_func = np.fft.fftn(self._grid[grid_name])
+        self._set_grid_key_value(grid_name, None)           # to save memory
 
         corr_func = corr_func.conjugate()
         corr_func = np.fft.ifftn(self._pot_grid_FFTs[grid_name] * corr_func)
         corr_func = np.real(corr_func)
+
         return corr_func
 
-    def _cal_energies(self):
+    def _cal_energies_NOTUSED(self):
         """
         calculate interaction energies
         store self._meaningful_energies which is a dict of 1d-arrays
@@ -768,6 +752,34 @@ class ChargeGrid(Grid):
         self._free_of_clash = (self._free_of_clash < 0.0001)
 
         # exclude positions where molecule crosses border
+        self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j, 0:max_k]
+
+        grid_names = [name for name in self._grid_func_names if name != "occupancy"]
+        self._meaningful_energies = {}
+
+        for name in grid_names:
+            # exclude positions where ligand crosses border
+            self._meaningful_energies[name] = self._cal_corr_func(name)[0:max_i, 0:max_j, 0:max_k]
+
+            # exclude positions where ligand is in clash with receptor, become 1D array
+            self._meaningful_energies[name] = self._meaningful_energies[name][self._free_of_clash]
+
+        self._number_of_meaningful_energies = self._meaningful_energies[grid_names[0]].shape[0]
+
+        return None
+
+    def _cal_energies(self):
+        """
+        calculate interaction energies
+        store self._meaningful_energies (1-array) and self._meaningful_corners (2-array)
+        meaningful means no boder-crossing and no clashing
+        """
+        max_i, max_j, max_k = self._max_grid_indices
+
+        corr_func = self._cal_corr_func("occupancy")
+        self._free_of_clash = (corr_func  < 0.001)
+
+        # exclude positions where ligand crosses border
         self._free_of_clash = self._free_of_clash[0:max_i, 0:max_j, 0:max_k]
 
         grid_names = [name for name in self._grid_func_names if name != "occupancy"]
@@ -805,17 +817,16 @@ class ChargeGrid(Grid):
             raise RuntimeError("Input coord does not have the correct shape.")
 
         self._crd = crd
-        self._move_molecule_to_center_or_corner()
+        self._move_molecule_to_lower_corner()
         return None
 
-    def cal_grids(self, molecular_coord=None):
+    def cal_grids(self, molecular_coord):
         """
         molecular_coord:    2-array, new liagnd coordinate
         compute charge grids, meaningful_energies, meaningful_corners for molecular_coord
         if molecular_coord==None, self._crd is used
         """
-        if molecular_coord is not None:
-            self._place_molecule_crd_in_grid(molecular_coord)
+        self._place_molecule_crd_in_grid(molecular_coord)
 
         self._cal_energies()
         return None
