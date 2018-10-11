@@ -277,7 +277,7 @@ class PotentialGrid(Grid):
             self._nc_handle = nc.Dataset(grid_nc_file, "w", format="NETCDF4")
 
             # coordinates stored in self._crd
-            print("Loading coordinates from " + inpcrd_file_name)
+            print("Loading atomic coordinates from " + inpcrd_file_name)
             self._load_inpcrd(inpcrd_file_name)
 
             # save "origin", "d0", "d1", "d2", "spacing" and "counts" to self._grid
@@ -410,6 +410,7 @@ class PotentialGrid(Grid):
 
         self._initialize_convenient_para()
 
+        print("Taking atomic coordiate from " + grid_nc_file)
         self._crd = self._grid["crd_placed_in_grid"]
         self._initial_com = self._grid["initial_com"]
         self._debye_huckel_kappa = self._grid["debye_huckel_kappa"][0]
@@ -610,6 +611,9 @@ class PotentialGrid(Grid):
 
     def get_FFTs(self):
         return self._FFTs
+
+    def get_initial_com(self):
+        return self._initial_com
 
     def write_box(self, file_name):
         write_box(self, file_name)
@@ -860,5 +864,8 @@ class ChargeGrid(Grid):
         for name in ["CHARGE_E_UNIT", "R_LJ_CHARGE", "A_LJ_CHARGE"]:
             charges[name] = self._prmtop[name]
         return charges
+
+    def get_initial_com(self):
+        return self._initial_com
 
 
