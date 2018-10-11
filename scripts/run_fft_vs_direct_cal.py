@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument( "--pot_prmtop_file",   type=str, default="/home/nguyen76/B22/Leap/protein_ph9p4.prmtop")
 parser.add_argument( "--pot_inpcrd_file",   type=str, default="/home/nguyen76/B22/md/protein_1/traj_0.inpcrd")
-parser.add_argument( "--pot_grid_nc_file",  type=str, default="/scratch/nguyen76/B22/pot_grids/0.1M/grid.nc")
+parser.add_argument( "--pot_grid_nc_file",  type=str, default="/home/nguyen76/B22/test/pot_grid/0.1M/grid.nc")
 
 parser.add_argument( "--char_prmtop_file",   type=str, default="/home/nguyen76/B22/Leap/protein_ph9p4.prmtop")
 
@@ -29,7 +29,7 @@ parser.add_argument( "--conf_ind",   type=int, default=0)
 
 parser.add_argument( "--fft_sample_nc",   type=str, default="fft_samples.nc")
 
-parser.add_argument( "--n_energy_samples",   type=int, default=1000)
+parser.add_argument( "--n_energy_samples",   type=int, default=10)
 
 parser.add_argument( "--out",   type=str, default="energies.pkl")
 
@@ -62,6 +62,7 @@ sampler = FFTSampling(args.pot_prmtop_file,
 
 sampler.run_sampling()
 
+
 pot_grid = sampler.get_pot_grid()
 print("COM of the the molecule used to map potential grid: {}".format(pot_grid.get_initial_com()))
 pot_grid.write_box("box.pdb")
@@ -85,8 +86,12 @@ print("pot_initial_com: {}".format(pot_initial_com))
 char_initial_com_0 = fft_data.variables["char_initial_com_0"][:]
 print("char_initial_com_0: {}".format(char_initial_com_0))
 
+
 char_crd_0 = fft_data.variables["char_crd_0"][:]
 write_pdb(char_grid.get_prmtop(), char_crd_0, "char_molecule_initial_coord.pdb", "w")
+
+char_crd_furthest = _translate_crd(char_crd_0, fft_data.variables["char_trans_corners_0"][-1], grid_x, grid_y, grid_z)
+write_pdb(char_grid.get_prmtop(), char_crd_furthest, "char_molecule_furthest_coord.pdb", "w")
 
 n_data_points = fft_data.variables['electrostatic_0'].shape[0]
 
@@ -97,11 +102,12 @@ sel_indices = np.random.choice(n_data_points, size=args.n_energy_samples, replac
 fft_energies = { "electrostatic":[], "LJa":[], "LJr":[] }
 direct_energies = { "electrostatic":[], "LJa":[], "LJr":[] }
 
-for ix in sel_indices:
 
-    fft_energies["electrostatic"].append(fft_data.variables['electrostatic_0'][ix])
-    fft_energies["LJr"].append(fft_data.variables['LJr_0'][ix])
-    fft_energies["LJa"].append(fft_data.variables['LJa_0'][ix])
+for count, ix in enumerate(sel_indices):
+
+    fft_energies["electrostatic"].append(float(fft_data.variables['electrostatic_0'][ix]))
+    fft_energies["LJr"].append(float(fft_data.variables['LJr_0'][ix]))
+    fft_energies["LJa"].append(float(fft_data.variables['LJa_0'][ix]))
 
     corner = fft_data.variables['char_trans_corners_0'][ix]
     moved_char_crd = _translate_crd(char_crd_0, corner, grid_x, grid_y, grid_z)
@@ -118,9 +124,9 @@ for ix in sel_indices:
     direct_energies["LJr"].append(de["LJr"])
     direct_energies["LJa"].append(de["LJa"])
 
-    print("electrostatic: {} vs {}".format(fft_energies["electrostatic"][ix], direct_energies["electrostatic"]))
-    print("LJr:           {} vs {}".format(fft_energies["LJr"][ix], direct_energies["LJr"]))
-    print("LJa:           {} vs {}".format(fft_energies["LJa"][ix], direct_energies["LJa"]))
+    print("electrostatic: {} vs {}".format(fft_energies["electrostatic"][count], direct_energies["electrostatic"][count]))
+    print("LJr:           {} vs {}".format(fft_energies["LJr"][count], direct_energies["LJr"][count]))
+    print("LJa:           {} vs {}".format(fft_energies["LJa"][count], direct_energies["LJa"][count]))
     print(" ")
 
 pickle.dump({"fft":fft_energies, "direct":direct_energies}, open(args.out, "w"))
