@@ -2,6 +2,7 @@
 define functions to read/write netCDF4 files
 """
 
+import numpy as np
 import netCDF4 as nc
 
 
@@ -62,7 +63,7 @@ def write_to_nc(nc_handle, key, value):
             nc_handle.createDimension(dim_name, dim)
 
     # create variable
-    if value.dtype == int:
+    if value.dtype == np.int or value.dtype == np.uint16:
         #store_format = "i8"
         # use this because char_trans_corners store a lot of small nonnegative numbers
         # u2 is 16-bit unsigned integer : http://unidata.github.io/netcdf4-python/#section4
@@ -70,7 +71,7 @@ def write_to_nc(nc_handle, key, value):
     elif value.dtype == float:
         store_format = "f8"
     else:
-        raise RuntimeError("unsupported dtype %s"%value.dtype)
+        raise RuntimeError("unsupported dtype %s"%value.dtype + " for " + key)
     dimensions = tuple(["%d"%dim for dim in value.shape])
     nc_handle.createVariable(key, store_format, dimensions)
 
